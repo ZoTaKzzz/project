@@ -109,8 +109,8 @@
     .status-not-started { background: var(--bg-input); color: var(--text-muted); }
     .status-researching { background: #7c3aed33; color: #a78bfa; }
     .status-called { background: #2563eb33; color: #60a5fa; }
-    .status-follow-up { background: #f59e0b33; color: #fbbf24; }
-    .status-qualified { background: #10b98133; color: #34d399; }
+    .status-follow-up-needed { background: #f59e0b33; color: #fbbf24; }
+    .status-qualified-lead { background: #10b98133; color: #34d399; }
     .status-not-interested { background: #ef444433; color: #f87171; }
     .status-closed { background: #64748b33; color: #94a3b8; }
 
@@ -809,11 +809,17 @@
         let called = 0, qualified = 0, researched = 0;
         const swVendors = {};
 
+        const targetCCNs = new Set(targetHospitals.map(h => h.ccn));
+        let targetCalled = 0;
+
         regionHospitals.forEach(h => {
           const ud = userData[h.ccn];
           if (ud) {
             const cs = ud.callStatus || 'Not Started';
-            if (cs === 'Called' || cs === 'Follow-Up Needed' || cs === 'Qualified Lead' || cs === 'Not Interested' || cs === 'Closed') called++;
+            if (cs === 'Called' || cs === 'Follow-Up Needed' || cs === 'Qualified Lead' || cs === 'Not Interested' || cs === 'Closed') {
+              called++;
+              if (targetCCNs.has(h.ccn)) targetCalled++;
+            }
             if (cs === 'Qualified Lead') qualified++;
             if (cs !== 'Not Started') researched++;
             if (ud.software) {
@@ -827,7 +833,7 @@
 
         const topVendors = Object.entries(swVendors).sort((a,b) => b[1]-a[1]).slice(0,3).map(([v,c]) => `${v} (${c})`).join(', ');
 
-        regionStats[name] = { total: regionHospitals.length, target: targetHospitals.length, called, qualified, researched, remaining: targetHospitals.length - called, topVendors };
+        regionStats[name] = { total: regionHospitals.length, target: targetHospitals.length, called, qualified, researched, remaining: targetHospitals.length - targetCalled, topVendors };
       }
 
       container.innerHTML = Object.entries(regionStats).map(([name, s]) => `
