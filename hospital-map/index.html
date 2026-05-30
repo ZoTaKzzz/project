@@ -388,7 +388,7 @@
     const CALL_STATUSES = ['Called','Call Later','Not Responding'];
 
     // Google Sheets Web App URL (set via UI or hardcode here)
-    let GOOGLE_SHEETS_URL = localStorage.getItem('ushift_sheets_url') || localStorage.getItem('youshift_sheets_url') || '';
+    let GOOGLE_SHEETS_URL = localStorage.getItem('youshift_sheets_url') || localStorage.getItem('ushift_sheets_url') || '';
 
     // ============ INIT ============
     async function init() {
@@ -706,7 +706,14 @@
     // ============ USER DATA (localStorage) ============
     function loadUserData() {
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        let raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          raw = localStorage.getItem('ushift_hospital_data');
+          if (raw) {
+            localStorage.setItem(STORAGE_KEY, raw);
+            localStorage.removeItem('ushift_hospital_data');
+          }
+        }
         if (raw) userData = JSON.parse(raw);
       } catch (e) { userData = {}; }
     }
