@@ -194,7 +194,7 @@
       if (h.phone) html += `<div class="info-row"><strong>Phone:</strong> ${esc(h.phone)}</div>`;
       if (h.type) html += `<div class="info-row"><strong>Type:</strong> ${esc(h.type)}</div>`;
       if (h.owner) html += `<div class="info-row"><strong>Ownership:</strong> ${esc(h.owner)}</div>`;
-      if (h.beds) html += `<div class="info-row"><strong>Beds:</strong> ${h.beds}</div>`;
+      if (h.beds && h.beds > 0) html += `<div class="info-row"><strong>Beds:</strong> ${h.beds}</div>`;
       if (h.rating && h.rating !== 'Not Available') {
         html += `<div class="info-row"><strong>Rating:</strong> <span class="rating ${getRatingClass(h.rating)}">${h.rating} / 5</span></div>`;
       }
@@ -204,7 +204,7 @@
       if (h.emergency === 'Yes') tags.push('Emergency');
       if (h.birthingFriendly === 'Y') tags.push('Birthing Friendly');
       if (tags.length) html += `<div class="info-row">${tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>`;
-      if (h.website) html += `<div class="info-row"><a href="${esc(h.website)}" target="_blank" rel="noopener">Website</a></div>`;
+      if (h.website && h.website !== 'NOT AVAILABLE') html += `<div class="info-row"><a href="${esc(h.website)}" target="_blank" rel="noopener">Website</a></div>`;
       html += '</div>';
       return html;
     }
