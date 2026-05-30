@@ -96,28 +96,36 @@
     .detail-row .label { color: var(--text-muted); }
     .detail-row .value { font-weight: 500; text-align: right; max-width: 60%; }
 
-    /* Software stack */
-    .sw-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; margin-bottom: 4px; background: var(--bg); border-radius: 4px; font-size: 12px; }
-    .sw-item select { width: auto; padding: 3px 6px; font-size: 11px; }
-    .sw-category { font-size: 12px; font-weight: 600; margin: 8px 0 4px; color: var(--text-muted); }
-    .confidence-bar { display: flex; gap: 2px; margin-top: 2px; }
-    .confidence-bar span { width: 12px; height: 4px; border-radius: 2px; background: var(--border); }
-    .confidence-bar span.filled { background: var(--accent); }
-
     /* Call status */
     .call-status-badge { display: inline-block; padding: 3px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-    .status-not-started { background: var(--bg-input); color: var(--text-muted); }
-    .status-researching { background: #7c3aed33; color: #a78bfa; }
+    .status-none { background: var(--bg-input); color: var(--text-muted); }
     .status-called { background: #2563eb33; color: #60a5fa; }
-    .status-follow-up-needed { background: #f59e0b33; color: #fbbf24; }
-    .status-qualified-lead { background: #10b98133; color: #34d399; }
-    .status-not-interested { background: #ef444433; color: #f87171; }
-    .status-closed { background: #64748b33; color: #94a3b8; }
+    .status-call-later { background: #f59e0b33; color: #fbbf24; }
+    .status-not-responding { background: #ef444433; color: #f87171; }
+
+    /* Outreach buttons */
+    .outreach-btn-group { display: flex; gap: 8px; margin-top: 8px; }
+    .outreach-btn { flex: 1; padding: 10px 8px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: 2px solid var(--border); background: var(--bg-input); color: var(--text); transition: all 0.2s; }
+    .outreach-btn:hover { border-color: var(--primary); }
+    .outreach-btn.active-called { border-color: #60a5fa; background: #2563eb33; color: #60a5fa; }
+    .outreach-btn.active-call-later { border-color: #fbbf24; background: #f59e0b33; color: #fbbf24; }
+    .outreach-btn.active-not-responding { border-color: #f87171; background: #ef444433; color: #f87171; }
+
+    /* Sheets status toast */
+    .sheets-toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; z-index: 3000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+    .sheets-toast.show { opacity: 1; }
+    .sheets-toast.success { background: #10b981; color: white; }
+    .sheets-toast.error { background: #ef4444; color: white; }
 
     /* Notes */
     .note-entry { padding: 8px; margin-bottom: 6px; background: var(--bg); border-radius: 4px; font-size: 12px; border-left: 3px solid var(--primary); }
     .note-entry .note-time { color: var(--text-muted); font-size: 11px; }
     .note-entry .note-text { margin-top: 4px; }
+
+    /* Google Sheets config */
+    .sheets-config { padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
+    .sheets-config summary { font-size: 12px; color: var(--text-muted); cursor: pointer; }
+    .sheets-config input { margin-top: 6px; }
     textarea { width: 100%; padding: 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-family: inherit; resize: vertical; min-height: 60px; outline: none; }
     textarea:focus { border-color: var(--primary); }
 
@@ -270,14 +278,20 @@
           <h3>Call Status</h3>
           <select id="callStatusFilter">
             <option value="">All Statuses</option>
-            <option value="Not Started">Not Started</option>
-            <option value="Researching">Researching</option>
+            <option value="None">None</option>
             <option value="Called">Called</option>
-            <option value="Follow-Up Needed">Follow-Up Needed</option>
-            <option value="Qualified Lead">Qualified Lead</option>
-            <option value="Not Interested">Not Interested</option>
-            <option value="Closed">Closed</option>
+            <option value="Call Later">Call Later</option>
+            <option value="Not Responding">Not Responding</option>
           </select>
+        </div>
+
+        <div class="sheets-config">
+          <details>
+            <summary>Google Sheets Configuration</summary>
+            <input type="text" id="sheetsUrlInput" placeholder="Paste Google Apps Script Web App URL" value="">
+            <button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="saveSheetsUrl()">Save URL</button>
+            <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Data is sent to this URL when you submit findings or click a status button.</p>
+          </details>
         </div>
 
         <div class="btn-row">
@@ -334,7 +348,6 @@
       </div>
       <div class="checkbox-group" style="margin-top:8px;">
         <label><input type="checkbox" id="exportNotes" checked>Include Notes</label>
-        <label><input type="checkbox" id="exportSoftware" checked>Include Software Stack</label>
         <label><input type="checkbox" id="exportCallHistory" checked>Include Call History</label>
       </div>
       <div class="modal-actions">
@@ -352,7 +365,7 @@
     let filtered = [];
     let map, markerGroup;
     let selectedHospital = null;
-    let userData = {}; // keyed by hospital id: { callStatus, notes, software, research }
+    let userData = {}; // keyed by hospital id: { callStatus, notes, findings }
 
     const STORAGE_KEY = 'ushift_hospital_data';
     const REGIONS = {
@@ -364,15 +377,10 @@
       "Mid-Atlantic": ["MD","DE","DC"]
     };
 
-    const SW_CATEGORIES = {
-      'Workforce Management': ['UKG','Kronos','Workday','API Healthcare','ShiftWizard','Smart Square','Symplr','Other'],
-      'Electronic Health Records': ['Epic','MyChart','Cerner','Oracle Health','Meditech','Athenahealth','Other'],
-      'Payroll Systems': ['ADP','UKG Payroll','Workday Payroll','Paycom','Other'],
-      'HRIS': ['Workday','Oracle','UKG','SAP SuccessFactors','Other'],
-      'Scheduling Systems': ['UKG','Smart Square','ShiftWizard','API Healthcare','Other']
-    };
+    const CALL_STATUSES = ['Called','Call Later','Not Responding'];
 
-    const CALL_STATUSES = ['Not Started','Researching','Called','Follow-Up Needed','Qualified Lead','Not Interested','Closed'];
+    // Google Sheets Web App URL (set via UI or hardcode here)
+    let GOOGLE_SHEETS_URL = localStorage.getItem('ushift_sheets_url') || '';
 
     // ============ INIT ============
     async function init() {
@@ -391,6 +399,10 @@
       document.getElementById('loading').style.display = 'none';
 
       // Auto-apply filters on change
+      // Restore saved Google Sheets URL in config input
+      const sheetsInput = document.getElementById('sheetsUrlInput');
+      if (sheetsInput && GOOGLE_SHEETS_URL) sheetsInput.value = GOOGLE_SHEETS_URL;
+
       document.querySelectorAll('#tab-filters select, #tab-filters input[type="checkbox"]').forEach(el => {
         el.addEventListener('change', applyFilters);
       });
@@ -499,16 +511,10 @@
         if (search) {
           const s = search;
           const haystack = `${h.name} ${h.city} ${h.county} ${h.ccn || ''} ${h.healthSystem} ${h.state}`.toLowerCase();
-          // Also search software data
           const ud = userData[h.id];
-          let swHaystack = '';
-          if (ud && ud.software) {
-            for (const cat in ud.software) {
-              const sw = ud.software[cat];
-              if (sw.vendor) swHaystack += ' ' + sw.vendor.toLowerCase();
-            }
-          }
-          if (!haystack.includes(s) && !swHaystack.includes(s)) return false;
+          let findingsHaystack = '';
+          if (ud && ud.findings) findingsHaystack = ud.findings.toLowerCase();
+          if (!haystack.includes(s) && !findingsHaystack.includes(s)) return false;
         }
         if (region && h.region !== region) return false;
         if (state && h.state !== state) return false;
@@ -520,7 +526,7 @@
         if (h.prospectScore < scoreMin || h.prospectScore > scoreMax) return false;
         if (callStatus) {
           const ud = userData[h.id];
-          const cs = ud ? (ud.callStatus || 'Not Started') : 'Not Started';
+          const cs = ud ? (ud.callStatus || 'None') : 'None';
           if (cs !== callStatus) return false;
         }
         return true;
@@ -574,7 +580,7 @@
       const show = filtered.slice(0, 200);
       listEl.innerHTML = show.map(h => {
         const ud = userData[h.id];
-        const status = ud ? (ud.callStatus || 'Not Started') : 'Not Started';
+        const status = ud ? (ud.callStatus || 'None') : 'None';
         const scoreClass = h.prospectScore >= 75 ? 'score-high' : h.prospectScore >= 50 ? 'score-med' : 'score-low';
         return `<li class="hospital-list-item" onclick="openDetailById('${h.id}')">
           <div class="score-badge ${scoreClass}">${h.prospectScore}</div>
@@ -650,78 +656,31 @@
           <div class="detail-row"><span class="label">System Size</span><span class="value">${h.systemSize === 0 ? 'Independent' : h.systemSize + ' hospitals'}</span></div>
         </div>
 
-        <!-- Call Status -->
+        <!-- Outreach Status -->
         <div class="detail-section">
           <h3>Outreach Status</h3>
-          <div class="filter-group">
-            <label>Call Status</label>
-            <select id="detail-call-status" onchange="updateCallStatus(this.value)">
-              ${CALL_STATUSES.map(s => `<option value="${s}" ${ud.callStatus === s ? 'selected' : ''}>${s}</option>`).join('')}
-            </select>
+          <div class="outreach-btn-group">
+            <button class="outreach-btn ${ud.callStatus === 'Called' ? 'active-called' : ''}" onclick="selectStatus('Called')" id="btn-called">Called</button>
+            <button class="outreach-btn ${ud.callStatus === 'Call Later' ? 'active-call-later' : ''}" onclick="selectStatus('Call Later')" id="btn-call-later">Call Later</button>
+            <button class="outreach-btn ${ud.callStatus === 'Not Responding' ? 'active-not-responding' : ''}" onclick="selectStatus('Not Responding')" id="btn-not-responding">Not Responding</button>
           </div>
         </div>
 
-        <!-- Software Stack -->
+        <!-- Findings -->
         <div class="detail-section">
-          <h3>Software Stack</h3>
-          ${Object.entries(SW_CATEGORIES).map(([cat, vendors]) => {
-            const sw = ud.software[cat] || { vendor: '', status: 'Unknown', confidence: 0 };
-            return `
-              <div class="sw-category">${cat}</div>
-              <div class="sw-item">
-                <select onchange="updateSoftware('${h.id}','${cat}','vendor',this.value)" style="flex:1;">
-                  <option value="">-- Select --</option>
-                  ${vendors.map(v => `<option value="${v}" ${sw.vendor === v ? 'selected' : ''}>${v}</option>`).join('')}
-                </select>
-                <select onchange="updateSoftware('${h.id}','${cat}','status',this.value)" style="width:90px;margin-left:4px;">
-                  <option value="Unknown" ${sw.status === 'Unknown' ? 'selected' : ''}>Unknown</option>
-                  <option value="Suspected" ${sw.status === 'Suspected' ? 'selected' : ''}>Suspected</option>
-                  <option value="Confirmed" ${sw.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
-                </select>
-              </div>`;
-          }).join('')}
-        </div>
-
-        <!-- Research Tracking -->
-        <div class="detail-section">
-          <h3>Research Source</h3>
-          <div class="filter-group">
-            <select id="detail-research-source" onchange="updateResearchSource(this.value)">
-              <option value="">-- Select Source --</option>
-              <option value="Phone Call" ${ud.researchSource === 'Phone Call' ? 'selected' : ''}>Phone Call</option>
-              <option value="Website" ${ud.researchSource === 'Website' ? 'selected' : ''}>Website</option>
-              <option value="LinkedIn" ${ud.researchSource === 'LinkedIn' ? 'selected' : ''}>LinkedIn</option>
-              <option value="Job Posting" ${ud.researchSource === 'Job Posting' ? 'selected' : ''}>Job Posting</option>
-              <option value="CMS" ${ud.researchSource === 'CMS' ? 'selected' : ''}>CMS</option>
-              <option value="Other" ${ud.researchSource === 'Other' ? 'selected' : ''}>Other</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Call History -->
-        <div class="detail-section">
-          <h3>Call History & Notes</h3>
+          <h3>Findings</h3>
           <div id="notes-list">
             ${(ud.notes || []).map((n, i) => `
               <div class="note-entry">
-                <div class="note-time">${n.timestamp} ${n.contact ? '· ' + esc(n.contact) : ''} ${n.phone ? '· ' + esc(n.phone) : ''}</div>
+                <div class="note-time">${n.timestamp} ${n.status ? '· <span class="call-status-badge status-' + n.status.toLowerCase().replace(/\s+/g,'-') + '">' + n.status + '</span>' : ''}</div>
                 <div class="note-text">${esc(n.text)}</div>
-                ${n.softwareDiscovered ? `<div style="font-size:11px;color:var(--accent);margin-top:2px;">Software: ${esc(n.softwareDiscovered)}</div>` : ''}
-                ${n.nextSteps ? `<div style="font-size:11px;color:var(--warning);margin-top:2px;">Next: ${esc(n.nextSteps)}</div>` : ''}
               </div>
             `).reverse().join('')}
           </div>
           <div style="margin-top:10px;">
-            <div style="display:flex;gap:6px;margin-bottom:6px;">
-              <input type="text" id="note-contact" placeholder="Contact name" style="flex:1;">
-              <input type="text" id="note-phone" placeholder="Phone" style="width:120px;">
-            </div>
-            <textarea id="note-text" placeholder="Key findings, software discovered, next steps..."></textarea>
-            <div style="display:flex;gap:6px;margin-top:6px;">
-              <input type="text" id="note-software" placeholder="Software discovered" style="flex:1;">
-              <input type="text" id="note-next" placeholder="Next steps" style="flex:1;">
-            </div>
-            <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%;" onclick="addNote()">Add Note</button>
+            <label style="font-size:12px;color:var(--text-muted);margin-bottom:4px;display:block;">Software</label>
+            <textarea id="finding-text" placeholder="Type software, notes, or any other findings...">${esc(ud.findings || '')}</textarea>
+            <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%;" onclick="submitFindings()">Save & Send to Google Sheets</button>
           </div>
         </div>
       `;
@@ -750,51 +709,114 @@
 
     function getUserData(id) {
       if (!userData[id]) {
-        userData[id] = { callStatus: 'Not Started', notes: [], software: {}, researchSource: '' };
+        userData[id] = { callStatus: 'None', notes: [], findings: '' };
       }
       return userData[id];
     }
 
-    function updateCallStatus(status) {
+    function selectStatus(status) {
       if (!selectedHospital) return;
-      getUserData(selectedHospital.id).callStatus = status;
-      saveUserData();
-      updateHospitalList();
-      updateRegionDashboard();
-    }
-
-    function updateSoftware(id, category, field, value) {
-      const ud = getUserData(id);
-      if (!ud.software[category]) ud.software[category] = { vendor: '', status: 'Unknown', confidence: 0 };
-      ud.software[category][field] = value;
-      if (field === 'status') {
-        ud.software[category].confidence = value === 'Confirmed' ? 3 : value === 'Suspected' ? 2 : 0;
-      }
-      saveUserData();
-    }
-
-    function updateResearchSource(source) {
-      if (!selectedHospital) return;
-      getUserData(selectedHospital.id).researchSource = source;
-      saveUserData();
-    }
-
-    function addNote() {
-      if (!selectedHospital) return;
-      const text = document.getElementById('note-text').value.trim();
-      if (!text) return;
-      const contact = document.getElementById('note-contact').value.trim();
-      const phone = document.getElementById('note-phone').value.trim();
-      const sw = document.getElementById('note-software').value.trim();
-      const next = document.getElementById('note-next').value.trim();
-
       const ud = getUserData(selectedHospital.id);
+      ud.callStatus = status;
+
+      // Update button styles
+      document.querySelectorAll('.outreach-btn').forEach(b => {
+        b.className = 'outreach-btn';
+      });
+      const btnId = 'btn-' + status.toLowerCase().replace(/\s+/g, '-');
+      const activeClass = 'active-' + status.toLowerCase().replace(/\s+/g, '-');
+      const btn = document.getElementById(btnId);
+      if (btn) btn.classList.add(activeClass);
+
+      // Get current findings text
+      const findingsEl = document.getElementById('finding-text');
+      const findingsText = findingsEl ? findingsEl.value.trim() : '';
+      ud.findings = findingsText;
+
+      // Add a note entry for history
       ud.notes.push({
         timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
-        text, contact, phone, softwareDiscovered: sw, nextSteps: next
+        text: findingsText || '(status update)',
+        status: status
       });
+
       saveUserData();
-      openDetail(selectedHospital); // refresh
+      sendToGoogleSheets(selectedHospital, findingsText, status);
+      updateHospitalList();
+      updateRegionDashboard();
+      openDetail(selectedHospital);
+    }
+
+    function submitFindings() {
+      if (!selectedHospital) return;
+      const findingsText = document.getElementById('finding-text').value.trim();
+      if (!findingsText) { showToast('Please type something in the Software box.', 'error'); return; }
+
+      const ud = getUserData(selectedHospital.id);
+      ud.findings = findingsText;
+      const currentStatus = ud.callStatus !== 'None' ? ud.callStatus : '';
+
+      // Add a note entry for history
+      ud.notes.push({
+        timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        text: findingsText,
+        status: currentStatus
+      });
+
+      saveUserData();
+      sendToGoogleSheets(selectedHospital, findingsText, currentStatus);
+      openDetail(selectedHospital);
+    }
+
+    // ============ GOOGLE SHEETS INTEGRATION ============
+    function saveSheetsUrl() {
+      const url = document.getElementById('sheetsUrlInput').value.trim();
+      GOOGLE_SHEETS_URL = url;
+      localStorage.setItem('ushift_sheets_url', url);
+      showToast('Google Sheets URL saved!', 'success');
+    }
+
+    async function sendToGoogleSheets(hospital, findings, status) {
+      if (!GOOGLE_SHEETS_URL) {
+        showToast('No Google Sheets URL configured. Open Filters > Google Sheets Configuration.', 'error');
+        return;
+      }
+      const payload = {
+        name: hospital.name,
+        stateCity: `${hospital.state}, ${hospital.city}`,
+        address: hospital.address,
+        beds: hospital.beds || 'N/A',
+        healthSystem: hospital.healthSystem,
+        ownership: hospital.ownership,
+        careType: hospital.careType,
+        findings: findings || '',
+        status: status || ''
+      };
+      try {
+        await fetch(GOOGLE_SHEETS_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        showToast('Sent to Google Sheets!', 'success');
+      } catch (err) {
+        console.error('Google Sheets error:', err);
+        showToast('Failed to send to Google Sheets.', 'error');
+      }
+    }
+
+    function showToast(msg, type) {
+      let toast = document.getElementById('sheets-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'sheets-toast';
+        toast.className = 'sheets-toast';
+        document.body.appendChild(toast);
+      }
+      toast.textContent = msg;
+      toast.className = `sheets-toast ${type} show`;
+      setTimeout(() => { toast.classList.remove('show'); }, 3000);
     }
 
     // ============ REGION DASHBOARD ============
@@ -809,8 +831,7 @@
       for (const [name, states] of Object.entries(REGIONS)) {
         const regionHospitals = allHospitals.filter(h => states.includes(h.state));
         const targetHospitals = regionHospitals.filter(h => h.prospectScore >= 60);
-        let called = 0, qualified = 0, researched = 0;
-        const swVendors = {};
+        let called = 0, callLater = 0, notResponding = 0;
 
         const targetIds = new Set(targetHospitals.map(h => h.id));
         let targetCalled = 0;
@@ -818,25 +839,14 @@
         regionHospitals.forEach(h => {
           const ud = userData[h.id];
           if (ud) {
-            const cs = ud.callStatus || 'Not Started';
-            if (cs === 'Called' || cs === 'Follow-Up Needed' || cs === 'Qualified Lead' || cs === 'Not Interested' || cs === 'Closed') {
-              called++;
-              if (targetIds.has(h.id)) targetCalled++;
-            }
-            if (cs === 'Qualified Lead') qualified++;
-            if (cs !== 'Not Started') researched++;
-            if (ud.software) {
-              for (const cat in ud.software) {
-                const v = ud.software[cat].vendor;
-                if (v) swVendors[v] = (swVendors[v] || 0) + 1;
-              }
-            }
+            const cs = ud.callStatus || 'None';
+            if (cs === 'Called') { called++; if (targetIds.has(h.id)) targetCalled++; }
+            if (cs === 'Call Later') { callLater++; }
+            if (cs === 'Not Responding') { notResponding++; }
           }
         });
 
-        const topVendors = Object.entries(swVendors).sort((a,b) => b[1]-a[1]).slice(0,3).map(([v,c]) => `${v} (${c})`).join(', ');
-
-        regionStats[name] = { total: regionHospitals.length, target: targetHospitals.length, called, qualified, researched, remaining: targetHospitals.length - targetCalled, topVendors };
+        regionStats[name] = { total: regionHospitals.length, target: targetHospitals.length, called, callLater, notResponding, remaining: targetHospitals.length - targetCalled };
       }
 
       container.innerHTML = Object.entries(regionStats).map(([name, s]) => `
@@ -845,12 +855,11 @@
           <div class="region-stats">
             <span class="rs-label">Total Hospitals</span><span class="rs-val">${s.total.toLocaleString()}</span>
             <span class="rs-label">Target Hospitals</span><span class="rs-val" style="color:var(--accent)">${s.target.toLocaleString()}</span>
-            <span class="rs-label">Researched</span><span class="rs-val">${s.researched}</span>
             <span class="rs-label">Called</span><span class="rs-val">${s.called}</span>
-            <span class="rs-label">Qualified</span><span class="rs-val" style="color:var(--accent)">${s.qualified}</span>
+            <span class="rs-label">Call Later</span><span class="rs-val" style="color:var(--warning)">${s.callLater}</span>
+            <span class="rs-label">Not Responding</span><span class="rs-val" style="color:var(--danger)">${s.notResponding}</span>
             <span class="rs-label">Remaining</span><span class="rs-val" style="color:var(--warning)">${s.remaining}</span>
           </div>
-          ${s.topVendors ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Top SW: ${s.topVendors}</div>` : ''}
         </div>
       `).join('');
     }
@@ -894,40 +903,28 @@
 
       let headers = ['Hospital Name','Health System','CMS CCN','Address','City','State','ZIP','County','Region',
         'CMS Type','Care Type','Ownership','Ownership Category','Beds','Phone','Emergency Services',
-        'Prospect Score','Call Status'];
+        'Prospect Score','Call Status','Findings'];
 
-      if (includeSoftware) {
-        for (const cat of Object.keys(SW_CATEGORIES)) {
-          headers.push(cat + ' Vendor', cat + ' Status');
-        }
-      }
       if (includeNotes) {
-        headers.push('Latest Note','Research Source');
+        headers.push('Latest Note');
       }
       if (includeCallHistory) {
-        headers.push('Total Notes','Last Contact','Last Contact Phone');
+        headers.push('Total Notes');
       }
 
       const rows = filtered.map(h => {
         const ud = userData[h.id] || {};
         let row = [h.name, h.healthSystem, h.ccn || '', h.address, h.city, h.state, h.zip, h.county, h.region,
           h.cmsType, h.careType, h.ownership, h.ownershipCategory, h.beds, h.phone, h.emergencyServices,
-          h.prospectScore, ud.callStatus || 'Not Started'];
+          h.prospectScore, ud.callStatus || 'None', ud.findings || ''];
 
-        if (includeSoftware) {
-          for (const cat of Object.keys(SW_CATEGORIES)) {
-            const sw = (ud.software || {})[cat] || {};
-            row.push(sw.vendor || '', sw.status || 'Unknown');
-          }
-        }
         if (includeNotes) {
           const notes = ud.notes || [];
-          row.push(notes.length ? notes[notes.length-1].text : '', ud.researchSource || '');
+          row.push(notes.length ? notes[notes.length-1].text : '');
         }
         if (includeCallHistory) {
           const notes = ud.notes || [];
-          const last = notes.length ? notes[notes.length-1] : {};
-          row.push(notes.length, last.contact || '', last.phone || '');
+          row.push(notes.length);
         }
         return row;
       });
