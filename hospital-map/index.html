@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>U.S. Hospital Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    #map { width: 100%; height: 100vh; }
+    
+    .header {
+      position: absolute;
+      top: 12px;
+      left: 60px;
+      z-index: 1000;
+      background: rgba(255,255,255,0.95);
+      padding: 10px 18px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header h1 { font-size: 18px; color: #1a1a2e; }
+    .header .count { font-size: 13px; color: #666; }
+
+    .controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 1000;
+      background: rgba(255,255,255,0.95);
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      max-width: 280px;
+    }
+    .controls label { font-size: 13px; font-weight: 600; color: #333; display: block; margin-bottom: 4px; }
+    .controls select, .controls input {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .controls .filter-group { margin-bottom: 6px; }
+    .controls .reset-btn {
+      background: #e74c3c;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      width: 100%;
+    }
+    .controls .reset-btn:hover { background: #c0392b; }
+    .visible-count { font-size: 12px; color: #666; margin-bottom: 8px; text-align: center; }
+
+    .hospital-popup { min-width: 240px; }
+    .hospital-popup h3 { margin: 0 0 6px; font-size: 15px; color: #1a1a2e; }
+    .hospital-popup .info-row { font-size: 12px; color: #555; margin: 3px 0; }
+    .hospital-popup .info-row strong { color: #333; }
+    .hospital-popup .rating { display: inline-block; background: #2ecc71; color: white; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .hospital-popup .rating.low { background: #e74c3c; }
+    .hospital-popup .rating.mid { background: #f39c12; }
+    .hospital-popup .rating.na { background: #95a5a6; }
+    .hospital-popup .tag { display: inline-block; background: #ecf0f1; padding: 1px 6px; border-radius: 3px; font-size: 11px; margin-right: 4px; margin-top: 4px; }
+
+    .legend {
+      position: absolute;
+      bottom: 24px;
+      left: 12px;
+      z-index: 1000;
+      background: rgba(255,255,255,0.95);
+      padding: 10px 14px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      font-size: 12px;
+    }
+    .legend h4 { margin: 0 0 6px; font-size: 13px; }
+    .legend-item { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2); }
+
+    .loading-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255,255,255,0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      font-size: 18px;
+      color: #333;
+    }
+    .loading-overlay.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div id="loading" class="loading-overlay">Loading 8,340 hospitals...</div>
+  
+  <div class="header">
+    <h1>U.S. Hospital Map</h1>
+    <span class="count" id="totalCount"></span>
+  </div>
+
+  <div class="controls">
+    <div class="filter-group">
+      <label>Search Hospital</label>
+      <input type="text" id="searchInput" placeholder="Hospital name or city...">
+    </div>
+    <div class="filter-group">
+      <label>State</label>
+      <select id="stateFilter"><option value="">All States</option></select>
+    </div>
+    <div class="filter-group">
+      <label>Hospital Type</label>
+      <select id="typeFilter"><option value="">All Types</option></select>
+    </div>
+    <div class="filter-group">
+      <label>Ownership</label>
+      <select id="ownerFilter"><option value="">All</option></select>
+    </div>
+    <div class="visible-count" id="visibleCount"></div>
+    <button class="reset-btn" id="resetBtn">Reset Filters</button>
+  </div>
+
+  <div class="legend">
+    <h4>Hospital Type</h4>
+    <div class="legend-item"><div class="legend-dot" style="background:#e74c3c"></div> General Acute Care</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#3498db"></div> Critical Access</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2ecc71"></div> Children's</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#9b59b6"></div> Psychiatric</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f39c12"></div> Rehabilitation</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#1abc9c"></div> Long Term Care</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#7f8c8d"></div> Other</div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script>
+    const TYPE_COLORS = {
+      'GENERAL ACUTE CARE': '#e74c3c',
+      'CRITICAL ACCESS': '#3498db',
+      'CHILDREN': '#2ecc71',
+      'CHILDRENS': '#2ecc71',
+      "CHILDREN'S": '#2ecc71',
+      'PSYCHIATRIC': '#9b59b6',
+      'REHABILITATION': '#f39c12',
+      'LONG TERM CARE': '#1abc9c',
+      'LONG TERM ACUTE CARE': '#1abc9c',
+      'MILITARY': '#34495e',
+      'CHRONIC DISEASE': '#e67e22',
+      'WOMEN': '#e91e63',
+    };
+
+    function getColor(type) {
+      if (!type) return '#7f8c8d';
+      const upper = type.toUpperCase();
+      for (const [key, color] of Object.entries(TYPE_COLORS)) {
+        if (upper.includes(key)) return color;
+      }
+      return '#7f8c8d';
+    }
+
+    function createIcon(color) {
+      return L.divIcon({
+        className: 'hospital-marker',
+        html: `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="${color}" stroke="white" stroke-width="1.5" opacity="0.85"/></svg>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+        popupAnchor: [0, -8],
+      });
+    }
+
+    function getRatingClass(r) {
+      if (!r || r === 'Not Available') return 'na';
+      const n = parseInt(r);
+      if (n >= 4) return '';
+      if (n >= 3) return 'mid';
+      return 'low';
+    }
+
+    function buildPopup(h) {
+      let html = `<div class="hospital-popup"><h3>${esc(h.name)}</h3>`;
+      html += `<div class="info-row">${esc(h.address)}, ${esc(h.city)}, ${esc(h.state)} ${esc(h.zip)}</div>`;
+      if (h.phone) html += `<div class="info-row"><strong>Phone:</strong> ${esc(h.phone)}</div>`;
+      if (h.type) html += `<div class="info-row"><strong>Type:</strong> ${esc(h.type)}</div>`;
+      if (h.owner) html += `<div class="info-row"><strong>Ownership:</strong> ${esc(h.owner)}</div>`;
+      if (h.beds) html += `<div class="info-row"><strong>Beds:</strong> ${h.beds}</div>`;
+      if (h.rating && h.rating !== 'Not Available') {
+        html += `<div class="info-row"><strong>Rating:</strong> <span class="rating ${getRatingClass(h.rating)}">${h.rating} / 5</span></div>`;
+      }
+      const tags = [];
+      if (h.trauma && h.trauma !== 'NOT AVAILABLE') tags.push('Trauma: ' + h.trauma);
+      if (h.helipad === 'Y') tags.push('Helipad');
+      if (h.emergency === 'Yes') tags.push('Emergency');
+      if (h.birthingFriendly === 'Y') tags.push('Birthing Friendly');
+      if (tags.length) html += `<div class="info-row">${tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>`;
+      if (h.website) html += `<div class="info-row"><a href="${esc(h.website)}" target="_blank" rel="noopener">Website</a></div>`;
+      html += '</div>';
+      return html;
+    }
+
+    function esc(s) {
+      if (!s) return '';
+      const d = document.createElement('div');
+      d.textContent = String(s);
+      return d.innerHTML;
+    }
+
+    const map = L.map('map', { zoomControl: true }).setView([39.5, -98.35], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 18,
+    }).addTo(map);
+
+    const clusterGroup = L.markerClusterGroup({
+      chunkedLoading: true,
+      maxClusterRadius: 50,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      disableClusteringAtZoom: 13,
+    });
+    map.addLayer(clusterGroup);
+
+    let allHospitals = [];
+    let allMarkers = [];
+
+    fetch('hospitals.json')
+      .then(r => r.json())
+      .then(data => {
+        allHospitals = data;
+        document.getElementById('totalCount').textContent = `${data.length.toLocaleString()} hospitals`;
+
+        const states = [...new Set(data.map(h => h.state).filter(Boolean))].sort();
+        const types = [...new Set(data.map(h => h.type).filter(Boolean))].sort();
+        const owners = [...new Set(data.map(h => h.owner).filter(Boolean))].sort();
+
+        const stateSelect = document.getElementById('stateFilter');
+        states.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; stateSelect.appendChild(o); });
+
+        const typeSelect = document.getElementById('typeFilter');
+        types.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; typeSelect.appendChild(o); });
+
+        const ownerSelect = document.getElementById('ownerFilter');
+        owners.forEach(ow => { const o = document.createElement('option'); o.value = ow; o.textContent = ow; ownerSelect.appendChild(o); });
+
+        allMarkers = data.map(h => {
+          const marker = L.marker([h.lat, h.lon], { icon: createIcon(getColor(h.type)) });
+          marker.bindPopup(() => buildPopup(h), { maxWidth: 320 });
+          marker._hospitalData = h;
+          return marker;
+        });
+
+        clusterGroup.addLayers(allMarkers);
+        updateVisibleCount(allMarkers.length);
+        document.getElementById('loading').classList.add('hidden');
+      });
+
+    function applyFilters() {
+      const search = document.getElementById('searchInput').value.toLowerCase().trim();
+      const state = document.getElementById('stateFilter').value;
+      const type = document.getElementById('typeFilter').value;
+      const owner = document.getElementById('ownerFilter').value;
+
+      clusterGroup.clearLayers();
+
+      const filtered = allMarkers.filter(m => {
+        const h = m._hospitalData;
+        if (state && h.state !== state) return false;
+        if (type && h.type !== type) return false;
+        if (owner && h.owner !== owner) return false;
+        if (search && !h.name.toLowerCase().includes(search) && !h.city.toLowerCase().includes(search)) return false;
+        return true;
+      });
+
+      clusterGroup.addLayers(filtered);
+      updateVisibleCount(filtered.length);
+    }
+
+    function updateVisibleCount(n) {
+      document.getElementById('visibleCount').textContent = `Showing ${n.toLocaleString()} of ${allHospitals.length.toLocaleString()}`;
+    }
+
+    let debounceTimer;
+    document.getElementById('searchInput').addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(applyFilters, 300);
+    });
+    document.getElementById('stateFilter').addEventListener('change', applyFilters);
+    document.getElementById('typeFilter').addEventListener('change', applyFilters);
+    document.getElementById('ownerFilter').addEventListener('change', applyFilters);
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('stateFilter').value = '';
+      document.getElementById('typeFilter').value = '';
+      document.getElementById('ownerFilter').value = '';
+      applyFilters();
+    });
+  </script>
+</body>
+</html>
