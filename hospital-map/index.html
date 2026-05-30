@@ -308,7 +308,7 @@
     <!-- Map -->
     <div id="map-container">
       <div class="map-stats-overlay">
-        <span>Showing <span class="counter" id="map-counter">0</span> of <span id="map-total">0</span> CMS hospitals</span>
+        <span>Showing <span class="counter" id="map-counter">0</span> of <span id="map-total">0</span> hospitals</span>
       </div>
       <div id="map"></div>
     </div>
@@ -352,7 +352,7 @@
     let filtered = [];
     let map, markerGroup;
     let selectedHospital = null;
-    let userData = {}; // keyed by CCN: { callStatus, notes, software, research }
+    let userData = {}; // keyed by hospital id: { callStatus, notes, software, research }
 
     const STORAGE_KEY = 'ushift_hospital_data';
     const REGIONS = {
@@ -377,10 +377,11 @@
     // ============ INIT ============
     async function init() {
       loadUserData();
-      const resp = await fetch('hospitals_cms.json');
+      const resp = await fetch('hospitals_all.json');
       allHospitals = await resp.json();
       document.getElementById('map-total').textContent = allHospitals.length.toLocaleString();
-      document.getElementById('header-count').textContent = `${allHospitals.length.toLocaleString()} CMS-verified hospitals`;
+      const cmsCount = allHospitals.filter(h => h.hasCMS).length;
+      document.getElementById('header-count').textContent = `${allHospitals.length.toLocaleString()} hospitals (${cmsCount.toLocaleString()} CMS-verified)`;
 
       initMap();
       populateFilterOptions();
@@ -497,9 +498,9 @@
       filtered = allHospitals.filter(h => {
         if (search) {
           const s = search;
-          const haystack = `${h.name} ${h.city} ${h.county} ${h.ccn} ${h.healthSystem} ${h.state}`.toLowerCase();
+          const haystack = `${h.name} ${h.city} ${h.county} ${h.ccn || ''} ${h.healthSystem} ${h.state}`.toLowerCase();
           // Also search software data
-          const ud = userData[h.ccn];
+          const ud = userData[h.id];
           let swHaystack = '';
           if (ud && ud.software) {
             for (const cat in ud.software) {
@@ -518,7 +519,7 @@
         if (cmsType && h.cmsType !== cmsType) return false;
         if (h.prospectScore < scoreMin || h.prospectScore > scoreMax) return false;
         if (callStatus) {
-          const ud = userData[h.ccn];
+          const ud = userData[h.id];
           const cs = ud ? (ud.callStatus || 'Not Started') : 'Not Started';
           if (cs !== callStatus) return false;
         }
@@ -572,13 +573,13 @@
       // Render first 200 for performance
       const show = filtered.slice(0, 200);
       listEl.innerHTML = show.map(h => {
-        const ud = userData[h.ccn];
+        const ud = userData[h.id];
         const status = ud ? (ud.callStatus || 'Not Started') : 'Not Started';
         const scoreClass = h.prospectScore >= 75 ? 'score-high' : h.prospectScore >= 50 ? 'score-med' : 'score-low';
-        return `<li class="hospital-list-item" onclick="openDetailByCCN('${h.ccn}')">
+        return `<li class="hospital-list-item" onclick="openDetailById('${h.id}')">
           <div class="score-badge ${scoreClass}">${h.prospectScore}</div>
           <div class="h-info">
-            <div class="h-name">${esc(h.name)}</div>
+            <div class="h-name">${esc(h.name)} ${h.hasCMS ? '<span style="font-size:9px;background:#0ea5e933;color:#38bdf8;padding:1px 5px;border-radius:3px;margin-left:4px;vertical-align:middle;">CMS</span>' : ''}</div>
             <div class="h-meta">${h.city}, ${h.state} · ${h.beds} beds · ${h.healthSystem} · <span class="call-status-badge status-${status.toLowerCase().replace(/\s+/g,'-')}">${status}</span></div>
           </div>
         </li>`;
@@ -590,22 +591,24 @@
     }
 
     // ============ DETAIL PANEL ============
-    function openDetailByCCN(ccn) {
-      const h = allHospitals.find(x => x.ccn === ccn);
+    function openDetailById(id) {
+      const h = allHospitals.find(x => x.id === id);
       if (h) openDetail(h);
     }
+    // Legacy alias for backward compatibility
+    function openDetailByCCN(ccn) { openDetailById(ccn); }
 
     function openDetail(h) {
       selectedHospital = h;
       const panel = document.getElementById('detail-panel');
       const content = document.getElementById('detail-content');
-      const ud = getUserData(h.ccn);
+      const ud = getUserData(h.id);
       const scoreClass = h.prospectScore >= 75 ? 'score-high' : h.prospectScore >= 50 ? 'score-med' : 'score-low';
 
       content.innerHTML = `
         <div class="detail-header">
           <div>
-            <h2>${esc(h.name)}</h2>
+            <h2>${esc(h.name)} ${h.hasCMS ? '<span style="font-size:10px;background:#0ea5e933;color:#38bdf8;padding:2px 6px;border-radius:3px;margin-left:6px;vertical-align:middle;">CMS Verified</span>' : '<span style="font-size:10px;background:#f59e0b33;color:#fbbf24;padding:2px 6px;border-radius:3px;margin-left:6px;vertical-align:middle;">GeoJSON Only</span>'}</h2>
             <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
               <div class="score-badge ${scoreClass}" style="width:32px;height:32px;font-size:13px;">${h.prospectScore}</div>
               <span style="font-size:12px;color:var(--text-muted);">Prospect Score</span>
@@ -617,7 +620,7 @@
         <!-- Hospital Info -->
         <div class="detail-section">
           <h3>Hospital Information</h3>
-          <div class="detail-row"><span class="label">CMS CCN</span><span class="value">${h.ccn}</span></div>
+          ${h.ccn ? `<div class="detail-row"><span class="label">CMS CCN</span><span class="value">${h.ccn}</span></div>` : `<div class="detail-row"><span class="label">Data Source</span><span class="value">GeoJSON (non-CMS)</span></div>`}
           <div class="detail-row"><span class="label">Address</span><span class="value">${esc(h.address)}<br>${h.city}, ${h.state} ${h.zip}</span></div>
           <div class="detail-row"><span class="label">County</span><span class="value">${esc(h.county)}</span></div>
           <div class="detail-row"><span class="label">Phone</span><span class="value">${h.phone ? `<a href="tel:${h.phone}" style="color:var(--primary)">${h.phone}</a>` : 'N/A'}</span></div>
@@ -625,9 +628,9 @@
           ${h.website ? `<div class="detail-row"><span class="label">Website</span><span class="value"><a href="${esc(h.website)}" target="_blank" rel="noopener" style="color:var(--primary)">Visit</a></span></div>` : ''}
         </div>
 
-        <!-- CMS Information -->
+        <!-- Classification -->
         <div class="detail-section">
-          <h3>CMS Classification</h3>
+          <h3>${h.hasCMS ? 'CMS Classification' : 'Classification'}</h3>
           <div class="detail-row"><span class="label">CMS Type</span><span class="value">${h.cmsType}</span></div>
           <div class="detail-row"><span class="label">Care Type</span><span class="value">${h.careType}</span></div>
           <div class="detail-row"><span class="label">Ownership</span><span class="value">${h.ownership}</span></div>
@@ -666,11 +669,11 @@
             return `
               <div class="sw-category">${cat}</div>
               <div class="sw-item">
-                <select onchange="updateSoftware('${h.ccn}','${cat}','vendor',this.value)" style="flex:1;">
+                <select onchange="updateSoftware('${h.id}','${cat}','vendor',this.value)" style="flex:1;">
                   <option value="">-- Select --</option>
                   ${vendors.map(v => `<option value="${v}" ${sw.vendor === v ? 'selected' : ''}>${v}</option>`).join('')}
                 </select>
-                <select onchange="updateSoftware('${h.ccn}','${cat}','status',this.value)" style="width:90px;margin-left:4px;">
+                <select onchange="updateSoftware('${h.id}','${cat}','status',this.value)" style="width:90px;margin-left:4px;">
                   <option value="Unknown" ${sw.status === 'Unknown' ? 'selected' : ''}>Unknown</option>
                   <option value="Suspected" ${sw.status === 'Suspected' ? 'selected' : ''}>Suspected</option>
                   <option value="Confirmed" ${sw.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
@@ -745,23 +748,23 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
     }
 
-    function getUserData(ccn) {
-      if (!userData[ccn]) {
-        userData[ccn] = { callStatus: 'Not Started', notes: [], software: {}, researchSource: '' };
+    function getUserData(id) {
+      if (!userData[id]) {
+        userData[id] = { callStatus: 'Not Started', notes: [], software: {}, researchSource: '' };
       }
-      return userData[ccn];
+      return userData[id];
     }
 
     function updateCallStatus(status) {
       if (!selectedHospital) return;
-      getUserData(selectedHospital.ccn).callStatus = status;
+      getUserData(selectedHospital.id).callStatus = status;
       saveUserData();
       updateHospitalList();
       updateRegionDashboard();
     }
 
-    function updateSoftware(ccn, category, field, value) {
-      const ud = getUserData(ccn);
+    function updateSoftware(id, category, field, value) {
+      const ud = getUserData(id);
       if (!ud.software[category]) ud.software[category] = { vendor: '', status: 'Unknown', confidence: 0 };
       ud.software[category][field] = value;
       if (field === 'status') {
@@ -772,7 +775,7 @@
 
     function updateResearchSource(source) {
       if (!selectedHospital) return;
-      getUserData(selectedHospital.ccn).researchSource = source;
+      getUserData(selectedHospital.id).researchSource = source;
       saveUserData();
     }
 
@@ -785,7 +788,7 @@
       const sw = document.getElementById('note-software').value.trim();
       const next = document.getElementById('note-next').value.trim();
 
-      const ud = getUserData(selectedHospital.ccn);
+      const ud = getUserData(selectedHospital.id);
       ud.notes.push({
         timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
         text, contact, phone, softwareDiscovered: sw, nextSteps: next
@@ -809,16 +812,16 @@
         let called = 0, qualified = 0, researched = 0;
         const swVendors = {};
 
-        const targetCCNs = new Set(targetHospitals.map(h => h.ccn));
+        const targetIds = new Set(targetHospitals.map(h => h.id));
         let targetCalled = 0;
 
         regionHospitals.forEach(h => {
-          const ud = userData[h.ccn];
+          const ud = userData[h.id];
           if (ud) {
             const cs = ud.callStatus || 'Not Started';
             if (cs === 'Called' || cs === 'Follow-Up Needed' || cs === 'Qualified Lead' || cs === 'Not Interested' || cs === 'Closed') {
               called++;
-              if (targetCCNs.has(h.ccn)) targetCalled++;
+              if (targetIds.has(h.id)) targetCalled++;
             }
             if (cs === 'Qualified Lead') qualified++;
             if (cs !== 'Not Started') researched++;
@@ -906,8 +909,8 @@
       }
 
       const rows = filtered.map(h => {
-        const ud = userData[h.ccn] || {};
-        let row = [h.name, h.healthSystem, h.ccn, h.address, h.city, h.state, h.zip, h.county, h.region,
+        const ud = userData[h.id] || {};
+        let row = [h.name, h.healthSystem, h.ccn || '', h.address, h.city, h.state, h.zip, h.county, h.region,
           h.cmsType, h.careType, h.ownership, h.ownershipCategory, h.beds, h.phone, h.emergencyServices,
           h.prospectScore, ud.callStatus || 'Not Started'];
 

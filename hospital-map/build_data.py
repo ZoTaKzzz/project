@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Build the enriched hospital JSON from CMS CSV + GeoJSON sources.
-Only includes hospitals with valid CMS records (CCN).
+Includes ALL hospitals: CMS-verified and GeoJSON-only.
 Adds: regions, health system grouping, prospect scores, care type inference.
 """
 
@@ -13,7 +13,7 @@ from collections import Counter, defaultdict
 
 CMS_CSV = "/home/ubuntu/attachments/1cb1bd41-857c-47a6-b827-7ba499b8d0c1/Hospital_General_Information.csv"
 GEOJSON = "/tmp/geojson/hospitals-3-geojson.geojson"
-OUTPUT = "/home/ubuntu/repos/project/hospital-map/hospitals_cms.json"
+OUTPUT = "/home/ubuntu/repos/project/hospital-map/hospitals_all.json"
 
 REGIONS = {
     "Northeast": ["ME","NH","VT","MA","RI","CT","NY","NJ","PA"],
@@ -189,6 +189,31 @@ def compute_prospect_score(hospital):
     return max(1, min(100, score))
 
 
+# GeoJSON TYPE -> CMS-equivalent type mapping
+GEO_TYPE_MAP = {
+    "GENERAL ACUTE CARE": "Acute Care Hospitals",
+    "CRITICAL ACCESS": "Critical Access Hospitals",
+    "CHILDREN": "Childrens",
+    "PSYCHIATRIC": "Psychiatric",
+    "LONG TERM CARE": "Long-term",
+    "MILITARY": "Acute Care - Department of Defense",
+    "REHABILITATION": "Rehabilitation",
+    "CHRONIC DISEASE": "Chronic Disease",
+    "SPECIAL": "Special",
+    "WOMEN": "Women",
+}
+
+# GeoJSON OWNER -> ownership category mapping
+GEO_OWNER_MAP = {
+    "NON-PROFIT": ("Voluntary non-profit - Private", "Nonprofit"),
+    "PROPRIETARY": ("Proprietary", "For-Profit"),
+    "GOVERNMENT - DISTRICT/AUTHORITY": ("Government - Hospital District or Authority", "Government"),
+    "GOVERNMENT - FEDERAL": ("Government - Federal", "Government"),
+    "GOVERNMENT - LOCAL": ("Government - Local", "Government"),
+    "GOVERNMENT - STATE": ("Government - State", "Government"),
+}
+
+
 def main():
     # Load GeoJSON
     with open(GEOJSON) as f:
@@ -199,6 +224,7 @@ def main():
     geo_by_name_state = {}
     geo_by_zip = {}
     geo_by_addr_city_state = {}
+    matched_geo_ids = set()  # Track which GeoJSON features get matched to CMS
     for feat in features:
         p = feat["properties"]
         key1 = (normalize(p["NAME"]), p["STATE"])
@@ -218,32 +244,28 @@ def main():
         cms_rows = list(csv.DictReader(f))
 
     print(f"CMS records: {len(cms_rows)}")
+    print(f"GeoJSON features: {len(features)}")
 
-    # Match CMS to GeoJSON for coordinates
+    # ---- Phase 1: Process CMS hospitals, match to GeoJSON for coordinates ----
     hospitals = []
-    matched = 0
+    cms_matched = 0
+    cms_no_coords = 0
     for r in cms_rows:
         state = r["State"].upper().strip()
         name_norm = normalize(r["Facility Name"])
         lat, lng = None, None
+        geo_extra = {}
+        matched_feat = None
 
         # Try exact name+state
         if (name_norm, state) in geo_by_name_state:
-            gf = geo_by_name_state[(name_norm, state)]
-            lat = gf["properties"]["LATITUDE"]
-            lng = gf["properties"]["LONGITUDE"]
-            geo_extra = gf["properties"]
-            matched += 1
+            matched_feat = geo_by_name_state[(name_norm, state)]
         else:
             # Try address+city+state
             addr = normalize(r["Address"].split(",")[0])
             city = r["City/Town"].upper().strip()
             if (addr, city, state) in geo_by_addr_city_state:
-                gf = geo_by_addr_city_state[(addr, city, state)]
-                lat = gf["properties"]["LATITUDE"]
-                lng = gf["properties"]["LONGITUDE"]
-                geo_extra = gf["properties"]
-                matched += 1
+                matched_feat = geo_by_addr_city_state[(addr, city, state)]
             else:
                 # Try ZIP code with name word overlap
                 z = r["ZIP Code"][:5]
@@ -258,17 +280,18 @@ def main():
                             best_overlap = overlap
                             best_feat = gf
                     if best_overlap >= 2 and best_feat:
-                        lat = best_feat["properties"]["LATITUDE"]
-                        lng = best_feat["properties"]["LONGITUDE"]
-                        geo_extra = best_feat["properties"]
-                        matched += 1
-                    else:
-                        geo_extra = {}
-                else:
-                    geo_extra = {}
+                        matched_feat = best_feat
 
-        # Skip hospitals without coordinates (we need map pins)
+        if matched_feat:
+            lat = matched_feat["properties"]["LATITUDE"]
+            lng = matched_feat["properties"]["LONGITUDE"]
+            geo_extra = matched_feat["properties"]
+            matched_geo_ids.add(matched_feat["properties"]["OBJECTID"])
+            cms_matched += 1
+
+        # Skip CMS hospitals without coordinates (can't place on map)
         if lat is None or lng is None:
+            cms_no_coords += 1
             continue
 
         ccn = r["Facility ID"].strip()
@@ -294,6 +317,7 @@ def main():
             rating = None
 
         h = {
+            "id": ccn,
             "ccn": ccn,
             "name": r["Facility Name"].strip(),
             "address": r["Address"].strip(),
@@ -313,14 +337,14 @@ def main():
             "birthingFriendly": r.get("Meets criteria for birthing friendly designation", "").strip(),
             "rating": rating,
             "healthSystem": health_system,
-            "systemSize": 0,  # will be computed below
+            "systemSize": 0,
             "region": STATE_TO_REGION.get(state, "Other"),
             "website": geo_extra.get("WEBSITE", ""),
             "trauma": geo_extra.get("TRAUMA", ""),
             "helipad": geo_extra.get("HELIPAD", ""),
-            "prospectScore": 0,  # will be computed below
+            "hasCMS": True,
+            "prospectScore": 0,
         }
-        # Clean sentinel values
         if h["website"] == "NOT AVAILABLE":
             h["website"] = ""
         if h["trauma"] == "NOT AVAILABLE":
@@ -328,8 +352,111 @@ def main():
 
         hospitals.append(h)
 
-    print(f"Matched with coordinates: {matched}")
-    print(f"Hospitals included: {len(hospitals)}")
+    print(f"CMS matched with coordinates: {cms_matched}")
+    print(f"CMS without coordinates (skipped): {cms_no_coords}")
+    print(f"CMS hospitals included: {len(hospitals)}")
+
+    # ---- Phase 2: Add GeoJSON-only hospitals not matched to CMS ----
+    geo_only = 0
+    for feat in features:
+        p = feat["properties"]
+        if p["OBJECTID"] in matched_geo_ids:
+            continue  # already included via CMS match
+        if p.get("STATUS", "").upper() != "OPEN":
+            continue  # skip closed facilities
+
+        lat = p.get("LATITUDE")
+        lng = p.get("LONGITUDE")
+        if lat is None or lng is None:
+            continue
+
+        state = p.get("STATE", "").upper().strip()
+        geo_type = p.get("TYPE", "NOT AVAILABLE").strip()
+        cms_type_equiv = GEO_TYPE_MAP.get(geo_type, geo_type)
+
+        # Infer care type from GeoJSON TYPE
+        if geo_type in ("GENERAL ACUTE CARE", "CRITICAL ACCESS", "CHILDREN", "PSYCHIATRIC", "LONG TERM CARE", "MILITARY"):
+            care_type = "Inpatient"
+        elif geo_type in ("REHABILITATION", "CHRONIC DISEASE", "SPECIAL", "WOMEN"):
+            care_type = "Both"
+        else:
+            care_type = "Unknown"
+
+        owner_raw = p.get("OWNER", "NOT AVAILABLE").strip()
+        if owner_raw in GEO_OWNER_MAP:
+            ownership_raw, ownership_cat = GEO_OWNER_MAP[owner_raw]
+        else:
+            ownership_raw = owner_raw
+            ownership_cat = "Other"
+
+        beds_val = p.get("BEDS", -999)
+        if isinstance(beds_val, str):
+            try:
+                beds_val = int(beds_val)
+            except ValueError:
+                beds_val = 0
+        if beds_val < 0:
+            beds_val = 0
+
+        name = p.get("NAME", "").strip()
+        health_system = infer_health_system(name)
+
+        phone = p.get("TELEPHONE", "").strip()
+        if phone == "NOT AVAILABLE":
+            phone = ""
+        website = p.get("WEBSITE", "").strip()
+        if website == "NOT AVAILABLE":
+            website = ""
+        trauma = p.get("TRAUMA", "").strip()
+        if trauma == "NOT AVAILABLE":
+            trauma = ""
+        county = p.get("COUNTY", "").strip()
+
+        addr_raw = p.get("ADDRESS", "").strip()
+        # Split address at comma to get just street part
+        addr_parts = addr_raw.split(",")
+        address = addr_parts[0].strip()
+
+        geo_id = f"geo_{p['OBJECTID']}"
+        h = {
+            "id": geo_id,
+            "ccn": "",
+            "name": name,
+            "address": address,
+            "city": p.get("CITY", "").strip(),
+            "state": state,
+            "zip": p.get("ZIP", "").strip(),
+            "county": county,
+            "phone": phone,
+            "lat": float(lat),
+            "lng": float(lng),
+            "cmsType": cms_type_equiv,
+            "careType": care_type,
+            "ownership": ownership_raw,
+            "ownershipCategory": ownership_cat,
+            "beds": beds_val,
+            "emergencyServices": "",
+            "birthingFriendly": "",
+            "rating": None,
+            "healthSystem": health_system,
+            "systemSize": 0,
+            "region": STATE_TO_REGION.get(state, "Other"),
+            "website": website,
+            "trauma": trauma,
+            "helipad": p.get("HELIPAD", ""),
+            "hasCMS": False,
+            "prospectScore": 0,
+        }
+
+        hospitals.append(h)
+        geo_only += 1
+
+    print(f"GeoJSON-only hospitals added: {geo_only}")
+    print(f"Total hospitals: {len(hospitals)}")
+
+    cms_count = sum(1 for h in hospitals if h["hasCMS"])
+    print(f"\nCMS-verified: {cms_count}")
+    print(f"GeoJSON-only: {geo_only}")
 
     # Compute health system sizes
     system_counts = Counter(h["healthSystem"] for h in hospitals if h["healthSystem"] != "Independent")
