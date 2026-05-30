@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UShift Hospital Intelligence Platform</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --accent: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --bg: #0f172a;
+      --bg-card: #1e293b;
+      --bg-input: #334155;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border: #475569;
+      --sidebar-width: 380px;
+      --detail-width: 440px;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; }
+
+    /* Layout */
+    #app { display: flex; height: 100vh; }
+    #sidebar { width: var(--sidebar-width); background: var(--bg-card); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; z-index: 1000; flex-shrink: 0; }
+    #map-container { flex: 1; position: relative; }
+    #map { height: 100%; width: 100%; }
+    #detail-panel { width: 0; background: var(--bg-card); border-left: 1px solid var(--border); overflow-y: auto; transition: width 0.3s; z-index: 1000; flex-shrink: 0; }
+    #detail-panel.open { width: var(--detail-width); }
+
+    /* Sidebar header */
+    .sidebar-header { padding: 16px; background: var(--primary); color: white; }
+    .sidebar-header h1 { font-size: 18px; font-weight: 700; }
+    .sidebar-header p { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+
+    /* Tabs */
+    .tab-bar { display: flex; border-bottom: 1px solid var(--border); background: var(--bg); }
+    .tab-btn { flex: 1; padding: 10px 8px; font-size: 12px; font-weight: 600; text-align: center; cursor: pointer; border: none; background: none; color: var(--text-muted); border-bottom: 2px solid transparent; transition: all 0.2s; }
+    .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); background: var(--bg-card); }
+    .tab-btn:hover { color: var(--text); }
+    .tab-content { display: none; flex: 1; overflow-y: auto; }
+    .tab-content.active { display: block; }
+
+    /* Filter sections */
+    .filter-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .filter-section h3 { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .filter-group { margin-bottom: 10px; }
+    .filter-group label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+    select, input[type="text"], input[type="search"] {
+      width: 100%; padding: 8px 10px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; outline: none;
+    }
+    select:focus, input:focus { border-color: var(--primary); }
+    input::placeholder { color: var(--text-muted); }
+
+    /* Checkbox group */
+    .checkbox-group { display: flex; flex-wrap: wrap; gap: 6px; }
+    .checkbox-group label { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text); cursor: pointer; padding: 4px 8px; background: var(--bg-input); border-radius: 4px; border: 1px solid var(--border); }
+    .checkbox-group label:has(input:checked) { background: var(--primary); border-color: var(--primary); }
+    .checkbox-group input { display: none; }
+
+    /* Buttons */
+    .btn { padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: background 0.2s; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-outline { background: none; border: 1px solid var(--border); color: var(--text); }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+    .btn-row { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+
+    /* Stats bar */
+    .stats-bar { padding: 10px 16px; background: var(--bg); border-bottom: 1px solid var(--border); font-size: 12px; }
+    .stats-bar .stat { display: inline-block; margin-right: 12px; }
+    .stats-bar .stat-val { font-weight: 700; color: var(--accent); }
+
+    /* Score badge */
+    .score-badge { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; font-weight: 700; font-size: 14px; color: white; }
+    .score-high { background: #10b981; }
+    .score-med { background: #f59e0b; }
+    .score-low { background: #ef4444; }
+
+    /* Detail panel */
+    .detail-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; }
+    .detail-header h2 { font-size: 16px; font-weight: 700; flex: 1; }
+    .detail-close { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; padding: 0 4px; }
+    .detail-close:hover { color: var(--text); }
+    .detail-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .detail-section h3 { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; }
+    .detail-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
+    .detail-row .label { color: var(--text-muted); }
+    .detail-row .value { font-weight: 500; text-align: right; max-width: 60%; }
+
+    /* Software stack */
+    .sw-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; margin-bottom: 4px; background: var(--bg); border-radius: 4px; font-size: 12px; }
+    .sw-item select { width: auto; padding: 3px 6px; font-size: 11px; }
+    .sw-category { font-size: 12px; font-weight: 600; margin: 8px 0 4px; color: var(--text-muted); }
+    .confidence-bar { display: flex; gap: 2px; margin-top: 2px; }
+    .confidence-bar span { width: 12px; height: 4px; border-radius: 2px; background: var(--border); }
+    .confidence-bar span.filled { background: var(--accent); }
+
+    /* Call status */
+    .call-status-badge { display: inline-block; padding: 3px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .status-not-started { background: var(--bg-input); color: var(--text-muted); }
+    .status-researching { background: #7c3aed33; color: #a78bfa; }
+    .status-called { background: #2563eb33; color: #60a5fa; }
+    .status-follow-up-needed { background: #f59e0b33; color: #fbbf24; }
+    .status-qualified-lead { background: #10b98133; color: #34d399; }
+    .status-not-interested { background: #ef444433; color: #f87171; }
+    .status-closed { background: #64748b33; color: #94a3b8; }
+
+    /* Notes */
+    .note-entry { padding: 8px; margin-bottom: 6px; background: var(--bg); border-radius: 4px; font-size: 12px; border-left: 3px solid var(--primary); }
+    .note-entry .note-time { color: var(--text-muted); font-size: 11px; }
+    .note-entry .note-text { margin-top: 4px; }
+    textarea { width: 100%; padding: 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-family: inherit; resize: vertical; min-height: 60px; outline: none; }
+    textarea:focus { border-color: var(--primary); }
+
+    /* Regional dashboard */
+    .region-card { padding: 12px; margin: 8px 16px; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); cursor: pointer; transition: border-color 0.2s; }
+    .region-card:hover { border-color: var(--primary); }
+    .region-card.active { border-color: var(--primary); background: var(--primary)11; }
+    .region-card h4 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .region-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 12px; }
+    .region-stats .rs-label { color: var(--text-muted); }
+    .region-stats .rs-val { text-align: right; font-weight: 600; }
+
+    /* Hospital list */
+    .hospital-list { list-style: none; }
+    .hospital-list-item { padding: 10px 16px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.15s; }
+    .hospital-list-item:hover { background: var(--bg-input); }
+    .hospital-list-item .h-info { flex: 1; min-width: 0; }
+    .hospital-list-item .h-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hospital-list-item .h-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    /* Map overlays */
+    .map-stats-overlay { position: absolute; top: 10px; left: 10px; z-index: 999; background: var(--bg-card); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; }
+    .map-stats-overlay .counter { font-weight: 700; color: var(--accent); }
+
+    /* Loading */
+    #loading { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+    #loading .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Export modal */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; }
+    .modal-overlay.show { display: flex; }
+    .modal { background: var(--bg-card); border-radius: 12px; padding: 24px; width: 400px; max-width: 90vw; border: 1px solid var(--border); }
+    .modal h2 { font-size: 18px; margin-bottom: 16px; }
+    .modal .modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* Leaflet overrides */
+    .leaflet-popup-content-wrapper { background: var(--bg-card); color: var(--text); border-radius: 8px; }
+    .leaflet-popup-tip { background: var(--bg-card); }
+    .leaflet-popup-content { font-size: 13px; }
+    .hospital-marker { border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+  </style>
+</head>
+<body>
+  <div id="loading"><div class="spinner"></div></div>
+  <div id="app">
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <div class="sidebar-header">
+        <h1>UShift Hospital Intelligence</h1>
+        <p id="header-count">Loading...</p>
+      </div>
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="filters">Filters</button>
+        <button class="tab-btn" data-tab="regions">Regions</button>
+        <button class="tab-btn" data-tab="list">Hospitals</button>
+      </div>
+
+      <!-- Filters Tab -->
+      <div id="tab-filters" class="tab-content active">
+        <div class="filter-section">
+          <h3>Search</h3>
+          <input type="search" id="searchInput" placeholder="Name, city, county, CCN, health system...">
+        </div>
+
+        <div class="filter-section">
+          <h3>Region & State</h3>
+          <div class="filter-group">
+            <label>Region</label>
+            <select id="regionFilter"><option value="">All Regions</option></select>
+          </div>
+          <div class="filter-group">
+            <label>State</label>
+            <select id="stateFilter"><option value="">All States</option></select>
+          </div>
+        </div>
+
+        <div class="filter-section">
+          <h3>Health System Size</h3>
+          <div class="checkbox-group" id="systemSizeFilter">
+            <label><input type="checkbox" value="independent" checked>Independent</label>
+            <label><input type="checkbox" value="1-5" checked>1–5</label>
+            <label><input type="checkbox" value="6-10" checked>6–10</label>
+            <label><input type="checkbox" value="11-20" checked>11–20</label>
+            <label><input type="checkbox" value="21-30">21–30</label>
+            <label><input type="checkbox" value="30+">30+</label>
+          </div>
+        </div>
+
+        <div class="filter-section">
+          <h3>Care Type</h3>
+          <div class="checkbox-group" id="careTypeFilter">
+            <label><input type="checkbox" value="Inpatient" checked>Inpatient</label>
+            <label><input type="checkbox" value="Outpatient">Outpatient</label>
+            <label><input type="checkbox" value="Both">Both</label>
+          </div>
+        </div>
+
+        <div class="filter-section">
+          <h3>Bed Count</h3>
+          <div class="checkbox-group" id="bedFilter">
+            <label><input type="checkbox" value="0-50">0–50</label>
+            <label><input type="checkbox" value="51-100" checked>51–100</label>
+            <label><input type="checkbox" value="101-250" checked>101–250</label>
+            <label><input type="checkbox" value="251-500" checked>251–500</label>
+            <label><input type="checkbox" value="500+">500+</label>
+          </div>
+        </div>
+
+        <div class="filter-section">
+          <h3>Ownership</h3>
+          <div class="checkbox-group" id="ownershipFilter">
+            <label><input type="checkbox" value="Nonprofit" checked>Nonprofit</label>
+            <label><input type="checkbox" value="For-Profit" checked>For-Profit</label>
+            <label><input type="checkbox" value="Government">Government</label>
+          </div>
+        </div>
+
+        <div class="filter-section">
+          <h3>CMS Type</h3>
+          <select id="cmsTypeFilter">
+            <option value="">All Types</option>
+            <option value="Acute Care Hospitals">Acute Care</option>
+            <option value="Critical Access Hospitals">Critical Access</option>
+            <option value="Psychiatric">Psychiatric</option>
+            <option value="Childrens">Children's</option>
+            <option value="Long-term">Long-term</option>
+            <option value="Rural Emergency Hospital">Rural Emergency</option>
+            <option value="Acute Care - Veterans Administration">VA</option>
+            <option value="Acute Care - Department of Defense">DoD</option>
+          </select>
+        </div>
+
+        <div class="filter-section">
+          <h3>Prospect Score</h3>
+          <div class="filter-group" style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="scoreMin" placeholder="Min" style="width:60px;text-align:center;" value="1">
+            <span style="color:var(--text-muted)">—</span>
+            <input type="text" id="scoreMax" placeholder="Max" style="width:60px;text-align:center;" value="100">
+          </div>
+        </div>
+
+        <div class="filter-section">
+          <h3>Call Status</h3>
+          <select id="callStatusFilter">
+            <option value="">All Statuses</option>
+            <option value="Not Started">Not Started</option>
+            <option value="Researching">Researching</option>
+            <option value="Called">Called</option>
+            <option value="Follow-Up Needed">Follow-Up Needed</option>
+            <option value="Qualified Lead">Qualified Lead</option>
+            <option value="Not Interested">Not Interested</option>
+            <option value="Closed">Closed</option>
+          </select>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" onclick="applyFilters()">Apply Filters</button>
+          <button class="btn btn-outline btn-sm" onclick="resetFilters()">Reset All</button>
+          <button class="btn btn-outline btn-sm" onclick="showExportModal()">Export</button>
+        </div>
+      </div>
+
+      <!-- Regions Tab -->
+      <div id="tab-regions" class="tab-content">
+        <div class="filter-section">
+          <h3>Regional Dashboard</h3>
+        </div>
+        <div id="region-dashboard"></div>
+      </div>
+
+      <!-- Hospital List Tab -->
+      <div id="tab-list" class="tab-content">
+        <div class="stats-bar">
+          <span class="stat">Showing <span class="stat-val" id="list-count">0</span> hospitals</span>
+          <span class="stat">Avg Score: <span class="stat-val" id="avg-score">0</span></span>
+        </div>
+        <ul class="hospital-list" id="hospital-list"></ul>
+      </div>
+    </div>
+
+    <!-- Map -->
+    <div id="map-container">
+      <div class="map-stats-overlay">
+        <span>Showing <span class="counter" id="map-counter">0</span> of <span id="map-total">0</span> hospitals</span>
+      </div>
+      <div id="map"></div>
+    </div>
+
+    <!-- Detail Panel -->
+    <div id="detail-panel">
+      <div id="detail-content"></div>
+    </div>
+  </div>
+
+  <!-- Export Modal -->
+  <div class="modal-overlay" id="exportModal">
+    <div class="modal">
+      <h2>Export Data</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Export currently filtered hospitals with all tracked data.</p>
+      <div class="filter-group">
+        <label>Format</label>
+        <select id="exportFormat">
+          <option value="csv">CSV</option>
+          <option value="excel">Excel (TSV)</option>
+          <option value="crm">CRM-Compatible (CSV)</option>
+        </select>
+      </div>
+      <div class="checkbox-group" style="margin-top:8px;">
+        <label><input type="checkbox" id="exportNotes" checked>Include Notes</label>
+        <label><input type="checkbox" id="exportSoftware" checked>Include Software Stack</label>
+        <label><input type="checkbox" id="exportCallHistory" checked>Include Call History</label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline btn-sm" onclick="closeExportModal()">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="doExport()">Download</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script>
+    // ============ STATE ============
+    let allHospitals = [];
+    let filtered = [];
+    let map, markerGroup;
+    let selectedHospital = null;
+    let userData = {}; // keyed by hospital id: { callStatus, notes, software, research }
+
+    const STORAGE_KEY = 'ushift_hospital_data';
+    const REGIONS = {
+      "Northeast": ["ME","NH","VT","MA","RI","CT","NY","NJ","PA"],
+      "Southeast": ["VA","WV","NC","SC","GA","FL","AL","MS","TN","KY"],
+      "Midwest": ["OH","MI","IN","IL","WI","MN","IA","MO","KS","NE","ND","SD"],
+      "Southwest": ["TX","OK","AR","LA","NM"],
+      "West": ["CO","WY","MT","ID","UT","NV","AZ","WA","OR","CA","AK","HI"],
+      "Mid-Atlantic": ["MD","DE","DC"]
+    };
+
+    const SW_CATEGORIES = {
+      'Workforce Management': ['UKG','Kronos','Workday','API Healthcare','ShiftWizard','Smart Square','Symplr','Other'],
+      'Electronic Health Records': ['Epic','MyChart','Cerner','Oracle Health','Meditech','Athenahealth','Other'],
+      'Payroll Systems': ['ADP','UKG Payroll','Workday Payroll','Paycom','Other'],
+      'HRIS': ['Workday','Oracle','UKG','SAP SuccessFactors','Other'],
+      'Scheduling Systems': ['UKG','Smart Square','ShiftWizard','API Healthcare','Other']
+    };
+
+    const CALL_STATUSES = ['Not Started','Researching','Called','Follow-Up Needed','Qualified Lead','Not Interested','Closed'];
+
+    // ============ INIT ============
+    async function init() {
+      loadUserData();
+      const resp = await fetch('hospitals_all.json');
+      allHospitals = await resp.json();
+      document.getElementById('map-total').textContent = allHospitals.length.toLocaleString();
+      const cmsCount = allHospitals.filter(h => h.hasCMS).length;
+      document.getElementById('header-count').textContent = `${allHospitals.length.toLocaleString()} hospitals (${cmsCount.toLocaleString()} CMS-verified)`;
+
+      initMap();
+      populateFilterOptions();
+      applyFilters();
+      buildRegionDashboard();
+      setupTabs();
+      document.getElementById('loading').style.display = 'none';
+
+      // Auto-apply filters on change
+      document.querySelectorAll('#tab-filters select, #tab-filters input[type="checkbox"]').forEach(el => {
+        el.addEventListener('change', applyFilters);
+      });
+      let searchTimeout;
+      document.getElementById('searchInput').addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(applyFilters, 300);
+      });
+      document.getElementById('scoreMin').addEventListener('change', applyFilters);
+      document.getElementById('scoreMax').addEventListener('change', applyFilters);
+    }
+
+    // ============ MAP ============
+    function initMap() {
+      map = L.map('map', { zoomControl: true }).setView([39.5, -98.35], 4);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
+      }).addTo(map);
+      markerGroup = L.markerClusterGroup({
+        chunkedLoading: true, maxClusterRadius: 50, spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false, zoomToBoundsOnClick: true,
+        iconCreateFunction: cluster => {
+          const count = cluster.getChildCount();
+          let size = 'small', r = 30;
+          if (count > 100) { size = 'large'; r = 50; }
+          else if (count > 10) { size = 'medium'; r = 40; }
+          return L.divIcon({ html: `<div><span>${count}</span></div>`, className: `marker-cluster marker-cluster-${size}`, iconSize: [r, r] });
+        }
+      });
+      map.addLayer(markerGroup);
+    }
+
+    function getMarkerColor(h) {
+      const score = h.prospectScore;
+      if (score >= 75) return '#10b981';
+      if (score >= 50) return '#f59e0b';
+      return '#ef4444';
+    }
+
+    function updateMapMarkers() {
+      markerGroup.clearLayers();
+      const markers = [];
+      for (const h of filtered) {
+        const color = getMarkerColor(h);
+        const icon = L.divIcon({
+          className: '',
+          html: `<div class="hospital-marker" style="width:12px;height:12px;background:${color};"></div>`,
+          iconSize: [12, 12], iconAnchor: [6, 6]
+        });
+        const marker = L.marker([h.lat, h.lng], { icon });
+        marker.on('click', () => openDetail(h));
+        marker.bindTooltip(`<b>${esc(h.name)}</b><br>${h.city}, ${h.state} | Score: ${h.prospectScore}`, { direction: 'top' });
+        markers.push(marker);
+      }
+      markerGroup.addLayers(markers);
+      document.getElementById('map-counter').textContent = filtered.length.toLocaleString();
+    }
+
+    // ============ FILTERS ============
+    function populateFilterOptions() {
+      const regionSel = document.getElementById('regionFilter');
+      Object.keys(REGIONS).sort().forEach(r => {
+        regionSel.innerHTML += `<option value="${r}">${r}</option>`;
+      });
+
+      const states = [...new Set(allHospitals.map(h => h.state))].sort();
+      const stateSel = document.getElementById('stateFilter');
+      states.forEach(s => { stateSel.innerHTML += `<option value="${s}">${s}</option>`; });
+    }
+
+    function getCheckedValues(containerId) {
+      return [...document.querySelectorAll(`#${containerId} input:checked`)].map(cb => cb.value);
+    }
+
+    function getSystemSizeBucket(size) {
+      if (size === 0) return 'independent';
+      if (size <= 5) return '1-5';
+      if (size <= 10) return '6-10';
+      if (size <= 20) return '11-20';
+      if (size <= 30) return '21-30';
+      return '30+';
+    }
+
+    function getBedBucket(beds) {
+      if (beds <= 50) return '0-50';
+      if (beds <= 100) return '51-100';
+      if (beds <= 250) return '101-250';
+      if (beds <= 500) return '251-500';
+      return '500+';
+    }
+
+    function applyFilters() {
+      const search = document.getElementById('searchInput').value.toLowerCase().trim();
+      const region = document.getElementById('regionFilter').value;
+      const state = document.getElementById('stateFilter').value;
+      const systemSizes = getCheckedValues('systemSizeFilter');
+      const careTypes = getCheckedValues('careTypeFilter');
+      const bedBuckets = getCheckedValues('bedFilter');
+      const ownerships = getCheckedValues('ownershipFilter');
+      const cmsType = document.getElementById('cmsTypeFilter').value;
+      const scoreMin = parseInt(document.getElementById('scoreMin').value) || 1;
+      const scoreMax = parseInt(document.getElementById('scoreMax').value) || 100;
+      const callStatus = document.getElementById('callStatusFilter').value;
+
+      filtered = allHospitals.filter(h => {
+        if (search) {
+          const s = search;
+          const haystack = `${h.name} ${h.city} ${h.county} ${h.ccn || ''} ${h.healthSystem} ${h.state}`.toLowerCase();
+          // Also search software data
+          const ud = userData[h.id];
+          let swHaystack = '';
+          if (ud && ud.software) {
+            for (const cat in ud.software) {
+              const sw = ud.software[cat];
+              if (sw.vendor) swHaystack += ' ' + sw.vendor.toLowerCase();
+            }
+          }
+          if (!haystack.includes(s) && !swHaystack.includes(s)) return false;
+        }
+        if (region && h.region !== region) return false;
+        if (state && h.state !== state) return false;
+        if (systemSizes.length && !systemSizes.includes(getSystemSizeBucket(h.systemSize))) return false;
+        if (careTypes.length && !careTypes.includes(h.careType)) return false;
+        if (bedBuckets.length && !bedBuckets.includes(getBedBucket(h.beds))) return false;
+        if (ownerships.length && !ownerships.includes(h.ownershipCategory)) return false;
+        if (cmsType && h.cmsType !== cmsType) return false;
+        if (h.prospectScore < scoreMin || h.prospectScore > scoreMax) return false;
+        if (callStatus) {
+          const ud = userData[h.id];
+          const cs = ud ? (ud.callStatus || 'Not Started') : 'Not Started';
+          if (cs !== callStatus) return false;
+        }
+        return true;
+      });
+
+      // Sort by prospect score descending
+      filtered.sort((a, b) => b.prospectScore - a.prospectScore);
+
+      updateMapMarkers();
+      updateHospitalList();
+      updateRegionDashboard();
+    }
+
+    function resetFilters() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('regionFilter').value = '';
+      document.getElementById('stateFilter').value = '';
+      document.getElementById('cmsTypeFilter').value = '';
+      document.getElementById('callStatusFilter').value = '';
+      document.getElementById('scoreMin').value = '1';
+      document.getElementById('scoreMax').value = '100';
+
+      // Reset checkboxes to defaults
+      document.querySelectorAll('#systemSizeFilter input').forEach(cb => {
+        cb.checked = ['independent','1-5','6-10','11-20'].includes(cb.value);
+      });
+      document.querySelectorAll('#careTypeFilter input').forEach(cb => {
+        cb.checked = cb.value === 'Inpatient';
+      });
+      document.querySelectorAll('#bedFilter input').forEach(cb => {
+        cb.checked = ['51-100','101-250','251-500'].includes(cb.value);
+      });
+      document.querySelectorAll('#ownershipFilter input').forEach(cb => {
+        cb.checked = ['Nonprofit','For-Profit'].includes(cb.value);
+      });
+
+      applyFilters();
+    }
+
+    // ============ HOSPITAL LIST ============
+    function updateHospitalList() {
+      const listEl = document.getElementById('hospital-list');
+      const countEl = document.getElementById('list-count');
+      const avgEl = document.getElementById('avg-score');
+
+      countEl.textContent = filtered.length.toLocaleString();
+      const avg = filtered.length ? Math.round(filtered.reduce((s, h) => s + h.prospectScore, 0) / filtered.length) : 0;
+      avgEl.textContent = avg;
+
+      // Render first 200 for performance
+      const show = filtered.slice(0, 200);
+      listEl.innerHTML = show.map(h => {
+        const ud = userData[h.id];
+        const status = ud ? (ud.callStatus || 'Not Started') : 'Not Started';
+        const scoreClass = h.prospectScore >= 75 ? 'score-high' : h.prospectScore >= 50 ? 'score-med' : 'score-low';
+        return `<li class="hospital-list-item" onclick="openDetailById('${h.id}')">
+          <div class="score-badge ${scoreClass}">${h.prospectScore}</div>
+          <div class="h-info">
+            <div class="h-name">${esc(h.name)} ${h.hasCMS ? '<span style="font-size:9px;background:#0ea5e933;color:#38bdf8;padding:1px 5px;border-radius:3px;margin-left:4px;vertical-align:middle;">CMS</span>' : ''}</div>
+            <div class="h-meta">${h.city}, ${h.state} · ${h.beds} beds · ${h.healthSystem} · <span class="call-status-badge status-${status.toLowerCase().replace(/\s+/g,'-')}">${status}</span></div>
+          </div>
+        </li>`;
+      }).join('');
+
+      if (filtered.length > 200) {
+        listEl.innerHTML += `<li style="padding:12px 16px;text-align:center;color:var(--text-muted);font-size:12px;">Showing 200 of ${filtered.length.toLocaleString()}. Use filters to narrow results.</li>`;
+      }
+    }
+
+    // ============ DETAIL PANEL ============
+    function openDetailById(id) {
+      const h = allHospitals.find(x => x.id === id);
+      if (h) openDetail(h);
+    }
+    // Legacy alias for backward compatibility
+    function openDetailByCCN(ccn) { openDetailById(ccn); }
+
+    function openDetail(h) {
+      selectedHospital = h;
+      const panel = document.getElementById('detail-panel');
+      const content = document.getElementById('detail-content');
+      const ud = getUserData(h.id);
+      const scoreClass = h.prospectScore >= 75 ? 'score-high' : h.prospectScore >= 50 ? 'score-med' : 'score-low';
+
+      content.innerHTML = `
+        <div class="detail-header">
+          <div>
+            <h2>${esc(h.name)} ${h.hasCMS ? '<span style="font-size:10px;background:#0ea5e933;color:#38bdf8;padding:2px 6px;border-radius:3px;margin-left:6px;vertical-align:middle;">CMS Verified</span>' : '<span style="font-size:10px;background:#f59e0b33;color:#fbbf24;padding:2px 6px;border-radius:3px;margin-left:6px;vertical-align:middle;">GeoJSON Only</span>'}</h2>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+              <div class="score-badge ${scoreClass}" style="width:32px;height:32px;font-size:13px;">${h.prospectScore}</div>
+              <span style="font-size:12px;color:var(--text-muted);">Prospect Score</span>
+            </div>
+          </div>
+          <button class="detail-close" onclick="closeDetail()">&times;</button>
+        </div>
+
+        <!-- Hospital Info -->
+        <div class="detail-section">
+          <h3>Hospital Information</h3>
+          ${h.ccn ? `<div class="detail-row"><span class="label">CMS CCN</span><span class="value">${h.ccn}</span></div>` : `<div class="detail-row"><span class="label">Data Source</span><span class="value">GeoJSON (non-CMS)</span></div>`}
+          <div class="detail-row"><span class="label">Address</span><span class="value">${esc(h.address)}<br>${h.city}, ${h.state} ${h.zip}</span></div>
+          <div class="detail-row"><span class="label">County</span><span class="value">${esc(h.county)}</span></div>
+          <div class="detail-row"><span class="label">Phone</span><span class="value">${h.phone ? `<a href="tel:${h.phone}" style="color:var(--primary)">${h.phone}</a>` : 'N/A'}</span></div>
+          <div class="detail-row"><span class="label">Region</span><span class="value">${h.region}</span></div>
+          ${h.website ? `<div class="detail-row"><span class="label">Website</span><span class="value"><a href="${esc(h.website)}" target="_blank" rel="noopener" style="color:var(--primary)">Visit</a></span></div>` : ''}
+        </div>
+
+        <!-- Classification -->
+        <div class="detail-section">
+          <h3>${h.hasCMS ? 'CMS Classification' : 'Classification'}</h3>
+          <div class="detail-row"><span class="label">CMS Type</span><span class="value">${h.cmsType}</span></div>
+          <div class="detail-row"><span class="label">Care Type</span><span class="value">${h.careType}</span></div>
+          <div class="detail-row"><span class="label">Ownership</span><span class="value">${h.ownership}</span></div>
+          <div class="detail-row"><span class="label">Category</span><span class="value">${h.ownershipCategory}</span></div>
+          <div class="detail-row"><span class="label">Beds</span><span class="value">${h.beds || 'N/A'}</span></div>
+          <div class="detail-row"><span class="label">Emergency</span><span class="value">${h.emergencyServices || 'N/A'}</span></div>
+          <div class="detail-row"><span class="label">Birthing Friendly</span><span class="value">${h.birthingFriendly || 'N/A'}</span></div>
+          ${h.rating ? `<div class="detail-row"><span class="label">CMS Rating</span><span class="value">${h.rating} / 5</span></div>` : ''}
+          ${h.trauma ? `<div class="detail-row"><span class="label">Trauma</span><span class="value">${h.trauma}</span></div>` : ''}
+          ${h.helipad ? `<div class="detail-row"><span class="label">Helipad</span><span class="value">${h.helipad === 'Y' ? 'Yes' : 'No'}</span></div>` : ''}
+        </div>
+
+        <!-- Health System -->
+        <div class="detail-section">
+          <h3>Health System</h3>
+          <div class="detail-row"><span class="label">System</span><span class="value">${h.healthSystem}</span></div>
+          <div class="detail-row"><span class="label">System Size</span><span class="value">${h.systemSize === 0 ? 'Independent' : h.systemSize + ' hospitals'}</span></div>
+        </div>
+
+        <!-- Call Status -->
+        <div class="detail-section">
+          <h3>Outreach Status</h3>
+          <div class="filter-group">
+            <label>Call Status</label>
+            <select id="detail-call-status" onchange="updateCallStatus(this.value)">
+              ${CALL_STATUSES.map(s => `<option value="${s}" ${ud.callStatus === s ? 'selected' : ''}>${s}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <!-- Software Stack -->
+        <div class="detail-section">
+          <h3>Software Stack</h3>
+          ${Object.entries(SW_CATEGORIES).map(([cat, vendors]) => {
+            const sw = ud.software[cat] || { vendor: '', status: 'Unknown', confidence: 0 };
+            return `
+              <div class="sw-category">${cat}</div>
+              <div class="sw-item">
+                <select onchange="updateSoftware('${h.id}','${cat}','vendor',this.value)" style="flex:1;">
+                  <option value="">-- Select --</option>
+                  ${vendors.map(v => `<option value="${v}" ${sw.vendor === v ? 'selected' : ''}>${v}</option>`).join('')}
+                </select>
+                <select onchange="updateSoftware('${h.id}','${cat}','status',this.value)" style="width:90px;margin-left:4px;">
+                  <option value="Unknown" ${sw.status === 'Unknown' ? 'selected' : ''}>Unknown</option>
+                  <option value="Suspected" ${sw.status === 'Suspected' ? 'selected' : ''}>Suspected</option>
+                  <option value="Confirmed" ${sw.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+                </select>
+              </div>`;
+          }).join('')}
+        </div>
+
+        <!-- Research Tracking -->
+        <div class="detail-section">
+          <h3>Research Source</h3>
+          <div class="filter-group">
+            <select id="detail-research-source" onchange="updateResearchSource(this.value)">
+              <option value="">-- Select Source --</option>
+              <option value="Phone Call" ${ud.researchSource === 'Phone Call' ? 'selected' : ''}>Phone Call</option>
+              <option value="Website" ${ud.researchSource === 'Website' ? 'selected' : ''}>Website</option>
+              <option value="LinkedIn" ${ud.researchSource === 'LinkedIn' ? 'selected' : ''}>LinkedIn</option>
+              <option value="Job Posting" ${ud.researchSource === 'Job Posting' ? 'selected' : ''}>Job Posting</option>
+              <option value="CMS" ${ud.researchSource === 'CMS' ? 'selected' : ''}>CMS</option>
+              <option value="Other" ${ud.researchSource === 'Other' ? 'selected' : ''}>Other</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Call History -->
+        <div class="detail-section">
+          <h3>Call History & Notes</h3>
+          <div id="notes-list">
+            ${(ud.notes || []).map((n, i) => `
+              <div class="note-entry">
+                <div class="note-time">${n.timestamp} ${n.contact ? '· ' + esc(n.contact) : ''} ${n.phone ? '· ' + esc(n.phone) : ''}</div>
+                <div class="note-text">${esc(n.text)}</div>
+                ${n.softwareDiscovered ? `<div style="font-size:11px;color:var(--accent);margin-top:2px;">Software: ${esc(n.softwareDiscovered)}</div>` : ''}
+                ${n.nextSteps ? `<div style="font-size:11px;color:var(--warning);margin-top:2px;">Next: ${esc(n.nextSteps)}</div>` : ''}
+              </div>
+            `).reverse().join('')}
+          </div>
+          <div style="margin-top:10px;">
+            <div style="display:flex;gap:6px;margin-bottom:6px;">
+              <input type="text" id="note-contact" placeholder="Contact name" style="flex:1;">
+              <input type="text" id="note-phone" placeholder="Phone" style="width:120px;">
+            </div>
+            <textarea id="note-text" placeholder="Key findings, software discovered, next steps..."></textarea>
+            <div style="display:flex;gap:6px;margin-top:6px;">
+              <input type="text" id="note-software" placeholder="Software discovered" style="flex:1;">
+              <input type="text" id="note-next" placeholder="Next steps" style="flex:1;">
+            </div>
+            <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%;" onclick="addNote()">Add Note</button>
+          </div>
+        </div>
+      `;
+
+      panel.classList.add('open');
+      map.invalidateSize();
+    }
+
+    function closeDetail() {
+      document.getElementById('detail-panel').classList.remove('open');
+      selectedHospital = null;
+      map.invalidateSize();
+    }
+
+    // ============ USER DATA (localStorage) ============
+    function loadUserData() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) userData = JSON.parse(raw);
+      } catch (e) { userData = {}; }
+    }
+
+    function saveUserData() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+    }
+
+    function getUserData(id) {
+      if (!userData[id]) {
+        userData[id] = { callStatus: 'Not Started', notes: [], software: {}, researchSource: '' };
+      }
+      return userData[id];
+    }
+
+    function updateCallStatus(status) {
+      if (!selectedHospital) return;
+      getUserData(selectedHospital.id).callStatus = status;
+      saveUserData();
+      updateHospitalList();
+      updateRegionDashboard();
+    }
+
+    function updateSoftware(id, category, field, value) {
+      const ud = getUserData(id);
+      if (!ud.software[category]) ud.software[category] = { vendor: '', status: 'Unknown', confidence: 0 };
+      ud.software[category][field] = value;
+      if (field === 'status') {
+        ud.software[category].confidence = value === 'Confirmed' ? 3 : value === 'Suspected' ? 2 : 0;
+      }
+      saveUserData();
+    }
+
+    function updateResearchSource(source) {
+      if (!selectedHospital) return;
+      getUserData(selectedHospital.id).researchSource = source;
+      saveUserData();
+    }
+
+    function addNote() {
+      if (!selectedHospital) return;
+      const text = document.getElementById('note-text').value.trim();
+      if (!text) return;
+      const contact = document.getElementById('note-contact').value.trim();
+      const phone = document.getElementById('note-phone').value.trim();
+      const sw = document.getElementById('note-software').value.trim();
+      const next = document.getElementById('note-next').value.trim();
+
+      const ud = getUserData(selectedHospital.id);
+      ud.notes.push({
+        timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        text, contact, phone, softwareDiscovered: sw, nextSteps: next
+      });
+      saveUserData();
+      openDetail(selectedHospital); // refresh
+    }
+
+    // ============ REGION DASHBOARD ============
+    function buildRegionDashboard() {
+      updateRegionDashboard();
+    }
+
+    function updateRegionDashboard() {
+      const container = document.getElementById('region-dashboard');
+      const regionStats = {};
+
+      for (const [name, states] of Object.entries(REGIONS)) {
+        const regionHospitals = allHospitals.filter(h => states.includes(h.state));
+        const targetHospitals = regionHospitals.filter(h => h.prospectScore >= 60);
+        let called = 0, qualified = 0, researched = 0;
+        const swVendors = {};
+
+        const targetIds = new Set(targetHospitals.map(h => h.id));
+        let targetCalled = 0;
+
+        regionHospitals.forEach(h => {
+          const ud = userData[h.id];
+          if (ud) {
+            const cs = ud.callStatus || 'Not Started';
+            if (cs === 'Called' || cs === 'Follow-Up Needed' || cs === 'Qualified Lead' || cs === 'Not Interested' || cs === 'Closed') {
+              called++;
+              if (targetIds.has(h.id)) targetCalled++;
+            }
+            if (cs === 'Qualified Lead') qualified++;
+            if (cs !== 'Not Started') researched++;
+            if (ud.software) {
+              for (const cat in ud.software) {
+                const v = ud.software[cat].vendor;
+                if (v) swVendors[v] = (swVendors[v] || 0) + 1;
+              }
+            }
+          }
+        });
+
+        const topVendors = Object.entries(swVendors).sort((a,b) => b[1]-a[1]).slice(0,3).map(([v,c]) => `${v} (${c})`).join(', ');
+
+        regionStats[name] = { total: regionHospitals.length, target: targetHospitals.length, called, qualified, researched, remaining: targetHospitals.length - targetCalled, topVendors };
+      }
+
+      container.innerHTML = Object.entries(regionStats).map(([name, s]) => `
+        <div class="region-card" onclick="filterByRegion('${name}')">
+          <h4>${name}</h4>
+          <div class="region-stats">
+            <span class="rs-label">Total Hospitals</span><span class="rs-val">${s.total.toLocaleString()}</span>
+            <span class="rs-label">Target Hospitals</span><span class="rs-val" style="color:var(--accent)">${s.target.toLocaleString()}</span>
+            <span class="rs-label">Researched</span><span class="rs-val">${s.researched}</span>
+            <span class="rs-label">Called</span><span class="rs-val">${s.called}</span>
+            <span class="rs-label">Qualified</span><span class="rs-val" style="color:var(--accent)">${s.qualified}</span>
+            <span class="rs-label">Remaining</span><span class="rs-val" style="color:var(--warning)">${s.remaining}</span>
+          </div>
+          ${s.topVendors ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Top SW: ${s.topVendors}</div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    function filterByRegion(region) {
+      document.getElementById('regionFilter').value = region;
+      // Switch to filters tab
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.querySelector('[data-tab="filters"]').classList.add('active');
+      document.getElementById('tab-filters').classList.add('active');
+      applyFilters();
+    }
+
+    // ============ TABS ============
+    function setupTabs() {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        });
+      });
+    }
+
+    // ============ EXPORT ============
+    function showExportModal() {
+      document.getElementById('exportModal').classList.add('show');
+    }
+    function closeExportModal() {
+      document.getElementById('exportModal').classList.remove('show');
+    }
+
+    function doExport() {
+      const format = document.getElementById('exportFormat').value;
+      const includeNotes = document.getElementById('exportNotes').checked;
+      const includeSoftware = document.getElementById('exportSoftware').checked;
+      const includeCallHistory = document.getElementById('exportCallHistory').checked;
+      const sep = format === 'excel' ? '\t' : ',';
+
+      let headers = ['Hospital Name','Health System','CMS CCN','Address','City','State','ZIP','County','Region',
+        'CMS Type','Care Type','Ownership','Ownership Category','Beds','Phone','Emergency Services',
+        'Prospect Score','Call Status'];
+
+      if (includeSoftware) {
+        for (const cat of Object.keys(SW_CATEGORIES)) {
+          headers.push(cat + ' Vendor', cat + ' Status');
+        }
+      }
+      if (includeNotes) {
+        headers.push('Latest Note','Research Source');
+      }
+      if (includeCallHistory) {
+        headers.push('Total Notes','Last Contact','Last Contact Phone');
+      }
+
+      const rows = filtered.map(h => {
+        const ud = userData[h.id] || {};
+        let row = [h.name, h.healthSystem, h.ccn || '', h.address, h.city, h.state, h.zip, h.county, h.region,
+          h.cmsType, h.careType, h.ownership, h.ownershipCategory, h.beds, h.phone, h.emergencyServices,
+          h.prospectScore, ud.callStatus || 'Not Started'];
+
+        if (includeSoftware) {
+          for (const cat of Object.keys(SW_CATEGORIES)) {
+            const sw = (ud.software || {})[cat] || {};
+            row.push(sw.vendor || '', sw.status || 'Unknown');
+          }
+        }
+        if (includeNotes) {
+          const notes = ud.notes || [];
+          row.push(notes.length ? notes[notes.length-1].text : '', ud.researchSource || '');
+        }
+        if (includeCallHistory) {
+          const notes = ud.notes || [];
+          const last = notes.length ? notes[notes.length-1] : {};
+          row.push(notes.length, last.contact || '', last.phone || '');
+        }
+        return row;
+      });
+
+      const csvContent = [headers, ...rows].map(r => r.map(v => {
+        const s = String(v).replace(/"/g, '""');
+        return s.includes(sep) || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+      }).join(sep)).join('\n');
+
+      const ext = format === 'excel' ? 'tsv' : 'csv';
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ushift_hospitals_export.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      closeExportModal();
+    }
+
+    // ============ UTILS ============
+    function esc(str) {
+      if (!str) return '';
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+
+    // ============ BOOT ============
+    init();
+  </script>
+</body>
+</html>
