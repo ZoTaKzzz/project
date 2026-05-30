@@ -3,15 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>UShift Hospital Intelligence Platform</title>
+  <title>YouShift Hospital Intelligence Platform</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <style>
     :root {
-      --primary: #2563eb;
-      --primary-dark: #1d4ed8;
-      --accent: #10b981;
+      --primary: #4A7DFF;
+      --primary-dark: #3A65D4;
+      --accent: #6DB89E;
+      --accent-dark: #5AA088;
       --danger: #ef4444;
       --warning: #f59e0b;
       --bg: #0f172a;
@@ -35,14 +36,18 @@
     #detail-panel.open { width: var(--detail-width); }
 
     /* Sidebar header */
-    .sidebar-header { padding: 16px; background: var(--primary); color: white; }
-    .sidebar-header h1 { font-size: 18px; font-weight: 700; }
-    .sidebar-header p { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+    .sidebar-header { padding: 14px 16px; background: linear-gradient(135deg, #6DB89E 0%, #4A7DFF 100%); color: white; display: flex; align-items: center; gap: 12px; }
+    .sidebar-header .logo { height: 34px; width: auto; flex-shrink: 0; background: white; border-radius: 8px; padding: 4px 6px; object-fit: contain; }
+    .sidebar-header .header-text { flex: 1; min-width: 0; }
+    .sidebar-header h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+    .sidebar-header h1 .brand-you { font-weight: 800; }
+    .sidebar-header h1 .brand-shift { font-weight: 400; }
+    .sidebar-header p { font-size: 11px; opacity: 0.9; margin-top: 2px; }
 
     /* Tabs */
     .tab-bar { display: flex; border-bottom: 1px solid var(--border); background: var(--bg); }
     .tab-btn { flex: 1; padding: 10px 8px; font-size: 12px; font-weight: 600; text-align: center; cursor: pointer; border: none; background: none; color: var(--text-muted); border-bottom: 2px solid transparent; transition: all 0.2s; }
-    .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); background: var(--bg-card); }
+    .tab-btn.active { color: #4A7DFF; border-bottom-color: #4A7DFF; background: var(--bg-card); }
     .tab-btn:hover { color: var(--text); }
     .tab-content { display: none; flex: 1; overflow-y: auto; }
     .tab-content.active { display: block; }
@@ -81,7 +86,7 @@
 
     /* Score badge */
     .score-badge { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; font-weight: 700; font-size: 14px; color: white; }
-    .score-high { background: #10b981; }
+    .score-high { background: var(--accent); }
     .score-med { background: #f59e0b; }
     .score-low { background: #ef4444; }
 
@@ -114,11 +119,11 @@
     /* Sheets status toast */
     .sheets-toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; z-index: 3000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
     .sheets-toast.show { opacity: 1; }
-    .sheets-toast.success { background: #10b981; color: white; }
+    .sheets-toast.success { background: var(--accent); color: white; }
     .sheets-toast.error { background: #ef4444; color: white; }
 
     /* Notes */
-    .note-entry { padding: 8px; margin-bottom: 6px; background: var(--bg); border-radius: 4px; font-size: 12px; border-left: 3px solid var(--primary); }
+    .note-entry { padding: 8px; margin-bottom: 6px; background: var(--bg); border-radius: 4px; font-size: 12px; border-left: 3px solid var(--accent); }
     .note-entry .note-time { color: var(--text-muted); font-size: 11px; }
     .note-entry .note-text { margin-top: 4px; }
 
@@ -181,8 +186,11 @@
     <!-- Sidebar -->
     <div id="sidebar">
       <div class="sidebar-header">
-        <h1>UShift Hospital Intelligence</h1>
-        <p id="header-count">Loading...</p>
+        <img src="youshift-logo.png" alt="YouShift" class="logo">
+        <div class="header-text">
+          <h1><span class="brand-you">you</span><span class="brand-shift">shift</span> Hospital Intelligence</h1>
+          <p id="header-count">Loading...</p>
+        </div>
       </div>
       <div class="tab-bar">
         <button class="tab-btn active" data-tab="filters">Filters</button>
@@ -367,7 +375,7 @@
     let selectedHospital = null;
     let userData = {}; // keyed by hospital id: { callStatus, notes, findings }
 
-    const STORAGE_KEY = 'ushift_hospital_data';
+    const STORAGE_KEY = 'youshift_hospital_data';
     const REGIONS = {
       "Northeast": ["ME","NH","VT","MA","RI","CT","NY","NJ","PA"],
       "Southeast": ["VA","WV","NC","SC","GA","FL","AL","MS","TN","KY"],
@@ -380,7 +388,7 @@
     const CALL_STATUSES = ['Called','Call Later','Not Responding'];
 
     // Google Sheets Web App URL (set via UI or hardcode here)
-    let GOOGLE_SHEETS_URL = localStorage.getItem('ushift_sheets_url') || '';
+    let GOOGLE_SHEETS_URL = localStorage.getItem('ushift_sheets_url') || localStorage.getItem('youshift_sheets_url') || '';
 
     // ============ INIT ============
     async function init() {
@@ -772,7 +780,7 @@
     function saveSheetsUrl() {
       const url = document.getElementById('sheetsUrlInput').value.trim();
       GOOGLE_SHEETS_URL = url;
-      localStorage.setItem('ushift_sheets_url', url);
+      localStorage.setItem('youshift_sheets_url', url);
       showToast('Google Sheets URL saved!', 'success');
     }
 
@@ -939,7 +947,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `ushift_hospitals_export.${ext}`;
+      a.download = `youshift_hospitals_export.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
       closeExportModal();
