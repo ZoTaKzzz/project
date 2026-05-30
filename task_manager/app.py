@@ -86,14 +86,14 @@ def main():
         logger.error("Initialization failed: %s", exc)
         sys.exit(1)
 
-    if len(sys.argv) < 2:
-        print("Usage: python -m task_manager <command> [args]")
-        print("Commands: add, list, export, import, stats")
-        return
-
-    command = sys.argv[1]
-
     try:
+        if len(sys.argv) < 2:
+            print("Usage: python -m task_manager <command> [args]")
+            print("Commands: add, list, export, import, stats")
+            return
+
+        command = sys.argv[1]
+
         if command == "add":
             title = sys.argv[2] if len(sys.argv) > 2 else "Untitled"
             priority = int(sys.argv[3]) if len(sys.argv) > 3 else 0
