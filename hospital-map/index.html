@@ -747,20 +747,7 @@
       const btn = document.getElementById(btnId);
       if (btn) btn.classList.add(activeClass);
 
-      // Get current findings text
-      const findingsEl = document.getElementById('finding-text');
-      const findingsText = findingsEl ? findingsEl.value.trim() : '';
-      ud.findings = findingsText;
-
-      // Add a note entry for history
-      ud.notes.push({
-        timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
-        text: findingsText || '(status update)',
-        status: status
-      });
-
       saveUserData();
-      sendToGoogleSheets(selectedHospital, findingsText, status);
       updateHospitalList();
       updateRegionDashboard();
       openDetail(selectedHospital);
