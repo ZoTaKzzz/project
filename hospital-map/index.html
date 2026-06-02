@@ -853,27 +853,27 @@
         return;
       }
       const payload = {
-        hospitalName: hospital.name,
-        stateCity: `${hospital.state}, ${hospital.city}`,
-        address: hospital.address,
-        beds: hospital.beds || 'N/A',
-        healthSystem: hospital.healthSystem,
-        ownership: hospital.ownership,
-        careType: hospital.careType,
-        callStatus: ud.callStatus || '',
-        softwareHR: ud.softwareHR || '',
-        softwarePayroll: ud.softwarePayroll || '',
-        softwareCredentialing: ud.softwareCredentialing || '',
-        softwareEHR: ud.softwareEHR || '',
-        softwareWorkforceScheduling: ud.softwareWorkforce || '',
-        noSoftware: ud.softwareNone || '',
-        physicianHospital: ud.physicianHospital || '',
-        physicianEmergencyDept: ud.physicianED || '',
-        physicianNurses: ud.physicianNurses || '',
-        physicianHospitalist: ud.physicianHospitalist || '',
-        physicianAnesthetist: ud.physicianAnesthetist || '',
-        note: ud.note || '',
-        date: new Date().toISOString().replace('T', ' ').slice(0, 19)
+        Name: hospital.name,
+        Location: `${hospital.state}, ${hospital.city}`,
+        Address: hospital.address,
+        Beds: hospital.beds || 'N/A',
+        'Health System': hospital.healthSystem,
+        Ownership: hospital.ownership,
+        'Care Type': hospital.careType,
+        'Outreach Status': ud.callStatus || '',
+        HR: ud.softwareHR || '',
+        Payroll: ud.softwarePayroll || '',
+        Credentialing: ud.softwareCredentialing || '',
+        EHR: ud.softwareEHR || '',
+        'Workforce Scheduling': ud.softwareWorkforce || '',
+        'No Software': ud.softwareNone || '',
+        Hospital: ud.physicianHospital || '',
+        'Emergency Dept': ud.physicianED || '',
+        Nurses: ud.physicianNurses || '',
+        Hospitalist: ud.physicianHospitalist || '',
+        Anesthetist: ud.physicianAnesthetist || '',
+        Date: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        Note: ud.note || ''
       };
       try {
         await fetch(GOOGLE_SHEETS_URL, {
