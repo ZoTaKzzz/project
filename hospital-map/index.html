@@ -134,12 +134,13 @@
     textarea { width: 100%; padding: 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-family: inherit; resize: vertical; min-height: 60px; outline: none; }
     textarea:focus { border-color: var(--primary); }
 
-    /* Software category checkboxes in detail panel */
-    .sw-cat-group { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-    .sw-cat-group label { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text); cursor: pointer; padding: 5px 10px; background: var(--bg-input); border-radius: 4px; border: 1px solid var(--border); transition: all 0.2s; user-select: none; }
-    .sw-cat-group label:hover { border-color: var(--primary); }
-    .sw-cat-group label.checked { background: var(--primary); border-color: var(--primary); color: white; }
-    .sw-cat-group input[type="checkbox"] { display: none; }
+    /* Software category fields in detail panel */
+    .sw-cat-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+    .sw-cat-field { display: flex; align-items: center; gap: 8px; }
+    .sw-cat-field .sw-label { font-size: 12px; color: var(--text-muted); width: 140px; flex-shrink: 0; }
+    .sw-cat-field input { flex: 1; padding: 6px 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; outline: none; }
+    .sw-cat-field input:focus { border-color: var(--primary); }
+    .sw-cat-field input::placeholder { color: var(--text-muted); }
 
     /* Physician fields */
     .phys-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
@@ -373,6 +374,7 @@
         </select>
       </div>
       <div class="checkbox-group" style="margin-top:8px;">
+        <label><input type="checkbox" id="exportSoftware" checked>Include Software Categories</label>
         <label><input type="checkbox" id="exportNotes" checked>Include Notes</label>
         <label><input type="checkbox" id="exportCallHistory" checked>Include Call History</label>
       </div>
@@ -696,12 +698,13 @@
         <!-- Software Categories -->
         <div class="detail-section">
           <h3>Software Categories</h3>
-          <div class="sw-cat-group" id="sw-cat-group">
-            ${['HR', 'Payroll', 'Credentialing', 'EHR', 'Workforce Scheduling', 'No Software'].map(cat => {
-              const checked = (ud.softwareCategories || []).includes(cat);
-              const catId = 'sw-' + cat.toLowerCase().replace(/\s+/g, '-');
-              return '<label class="' + (checked ? 'checked' : '') + '" id="label-' + catId + '" onclick="toggleSoftwareCategory(\'' + cat + '\')"><input type="checkbox" id="' + catId + '"' + (checked ? ' checked' : '') + '>' + cat + '</label>';
-            }).join('')}
+          <div class="sw-cat-fields">
+            <div class="sw-cat-field"><span class="sw-label">HR</span><input type="text" id="sw-hr" placeholder="Software used..." value="${esc(ud.softwareHR || '')}"></div>
+            <div class="sw-cat-field"><span class="sw-label">Payroll</span><input type="text" id="sw-payroll" placeholder="Software used..." value="${esc(ud.softwarePayroll || '')}"></div>
+            <div class="sw-cat-field"><span class="sw-label">Credentialing</span><input type="text" id="sw-credentialing" placeholder="Software used..." value="${esc(ud.softwareCredentialing || '')}"></div>
+            <div class="sw-cat-field"><span class="sw-label">EHR</span><input type="text" id="sw-ehr" placeholder="Software used..." value="${esc(ud.softwareEHR || '')}"></div>
+            <div class="sw-cat-field"><span class="sw-label">Workforce Scheduling</span><input type="text" id="sw-workforce" placeholder="Software used..." value="${esc(ud.softwareWorkforce || '')}"></div>
+            <div class="sw-cat-field"><span class="sw-label">No Software</span><input type="text" id="sw-no-software" placeholder="Details..." value="${esc(ud.softwareNone || '')}"></div>
           </div>
         </div>
 
@@ -774,7 +777,7 @@
 
     function getUserData(id) {
       if (!userData[id]) {
-        userData[id] = { callStatus: 'None', notes: [], findings: '', softwareCategories: [], physicianHospital: '', physicianED: '', physicianNurses: '', physicianHospitalist: '', physicianAnesthetist: '', note: '' };
+        userData[id] = { callStatus: 'None', notes: [], findings: '', softwareHR: '', softwarePayroll: '', softwareCredentialing: '', softwareEHR: '', softwareWorkforce: '', softwareNone: '', physicianHospital: '', physicianED: '', physicianNurses: '', physicianHospitalist: '', physicianAnesthetist: '', note: '' };
       }
       return userData[id];
     }
@@ -803,12 +806,14 @@
       const ud = getUserData(selectedHospital.id);
       const currentStatus = ud.callStatus !== 'None' ? ud.callStatus : '';
 
-      // Collect software categories from checkboxes
-      const categories = [];
-      document.querySelectorAll('#sw-cat-group input[type="checkbox"]:checked').forEach(cb => {
-        categories.push(cb.parentElement.textContent.trim());
-      });
-      ud.softwareCategories = categories;
+      // Collect software category fields
+      ud.softwareHR = (document.getElementById('sw-hr')?.value || '').trim();
+      ud.softwarePayroll = (document.getElementById('sw-payroll')?.value || '').trim();
+      ud.softwareCredentialing = (document.getElementById('sw-credentialing')?.value || '').trim();
+      ud.softwareEHR = (document.getElementById('sw-ehr')?.value || '').trim();
+      ud.softwareWorkforce = (document.getElementById('sw-workforce')?.value || '').trim();
+      ud.softwareNone = (document.getElementById('sw-no-software')?.value || '').trim();
+      const categories = [ud.softwareHR && 'HR', ud.softwarePayroll && 'Payroll', ud.softwareCredentialing && 'Credentialing', ud.softwareEHR && 'EHR', ud.softwareWorkforce && 'Workforce Scheduling', ud.softwareNone && 'No Software'].filter(Boolean);
 
       // Collect physician fields
       ud.physicianHospital = (document.getElementById('phys-hospital')?.value || '').trim();
@@ -847,7 +852,6 @@
         showToast('No Google Sheets URL configured. Open Filters > Google Sheets Configuration.', 'error');
         return;
       }
-      const cats = ud.softwareCategories || [];
       const payload = {
         hospitalName: hospital.name,
         stateCity: `${hospital.state}, ${hospital.city}`,
@@ -857,12 +861,12 @@
         ownership: hospital.ownership,
         careType: hospital.careType,
         callStatus: ud.callStatus || '',
-        softwareHR: cats.includes('HR') ? 'Yes' : '',
-        softwarePayroll: cats.includes('Payroll') ? 'Yes' : '',
-        softwareCredentialing: cats.includes('Credentialing') ? 'Yes' : '',
-        softwareEHR: cats.includes('EHR') ? 'Yes' : '',
-        softwareWorkforceScheduling: cats.includes('Workforce Scheduling') ? 'Yes' : '',
-        noSoftware: cats.includes('No Software') ? 'Yes' : '',
+        softwareHR: ud.softwareHR || '',
+        softwarePayroll: ud.softwarePayroll || '',
+        softwareCredentialing: ud.softwareCredentialing || '',
+        softwareEHR: ud.softwareEHR || '',
+        softwareWorkforceScheduling: ud.softwareWorkforce || '',
+        noSoftware: ud.softwareNone || '',
         physicianHospital: ud.physicianHospital || '',
         physicianEmergencyDept: ud.physicianED || '',
         physicianNurses: ud.physicianNurses || '',
@@ -885,30 +889,7 @@
       }
     }
 
-    function toggleSoftwareCategory(cat) {
-      const catId = 'sw-' + cat.toLowerCase().replace(/\s+/g, '-');
-      const cb = document.getElementById(catId);
-      const label = document.getElementById('label-' + catId);
-      if (!cb || !label) return;
 
-      cb.checked = !cb.checked;
-      label.classList.toggle('checked', cb.checked);
-
-      if (cat === 'No Software' && cb.checked) {
-        ['HR', 'Payroll', 'Credentialing', 'EHR', 'Workforce Scheduling'].forEach(other => {
-          const otherId = 'sw-' + other.toLowerCase().replace(/\s+/g, '-');
-          const otherCb = document.getElementById(otherId);
-          const otherLabel = document.getElementById('label-' + otherId);
-          if (otherCb) { otherCb.checked = false; }
-          if (otherLabel) { otherLabel.classList.remove('checked'); }
-        });
-      } else if (cat !== 'No Software' && cb.checked) {
-        const nsCb = document.getElementById('sw-no-software');
-        const nsLabel = document.getElementById('label-sw-no-software');
-        if (nsCb) { nsCb.checked = false; }
-        if (nsLabel) { nsLabel.classList.remove('checked'); }
-      }
-    }
 
     function showToast(msg, type) {
       let toast = document.getElementById('sheets-toast');
@@ -1007,10 +988,14 @@
 
       let headers = ['Hospital Name','Health System','CMS CCN','Address','City','State','ZIP','County','Region',
         'CMS Type','Care Type','Ownership','Ownership Category','Beds','Phone','Emergency Services',
-        'Prospect Score','Call Status','Findings'];
+        'Prospect Score','Call Status'];
 
+      if (includeSoftware) {
+        headers.push('Software HR','Software Payroll','Software Credentialing','Software EHR','Software Workforce Scheduling','No Software',
+          'Physician Hospital','Physician Emergency Dept','Physician Nurses','Physician Hospitalist','Physician Anesthetist');
+      }
       if (includeNotes) {
-        headers.push('Latest Note');
+        headers.push('Note','Latest Note');
       }
       if (includeCallHistory) {
         headers.push('Total Notes');
@@ -1020,11 +1005,15 @@
         const ud = userData[h.id] || {};
         let row = [h.name, h.healthSystem, h.ccn || '', h.address, h.city, h.state, h.zip, h.county, h.region,
           h.cmsType, h.careType, h.ownership, h.ownershipCategory, h.beds, h.phone, h.emergencyServices,
-          h.prospectScore, ud.callStatus || 'None', ud.findings || ''];
+          h.prospectScore, ud.callStatus || 'None'];
 
+        if (includeSoftware) {
+          row.push(ud.softwareHR || '', ud.softwarePayroll || '', ud.softwareCredentialing || '', ud.softwareEHR || '', ud.softwareWorkforce || '', ud.softwareNone || '',
+            ud.physicianHospital || '', ud.physicianED || '', ud.physicianNurses || '', ud.physicianHospitalist || '', ud.physicianAnesthetist || '');
+        }
         if (includeNotes) {
           const notes = ud.notes || [];
-          row.push(notes.length ? notes[notes.length-1].text : '');
+          row.push(ud.note || '', notes.length ? notes[notes.length-1].text : '');
         }
         if (includeCallHistory) {
           const notes = ud.notes || [];
