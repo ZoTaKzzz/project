@@ -134,6 +134,21 @@
     textarea { width: 100%; padding: 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-family: inherit; resize: vertical; min-height: 60px; outline: none; }
     textarea:focus { border-color: var(--primary); }
 
+    /* Software category checkboxes in detail panel */
+    .sw-cat-group { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .sw-cat-group label { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text); cursor: pointer; padding: 5px 10px; background: var(--bg-input); border-radius: 4px; border: 1px solid var(--border); transition: all 0.2s; user-select: none; }
+    .sw-cat-group label:hover { border-color: var(--primary); }
+    .sw-cat-group label.checked { background: var(--primary); border-color: var(--primary); color: white; }
+    .sw-cat-group input[type="checkbox"] { display: none; }
+
+    /* Physician fields */
+    .phys-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+    .phys-field { display: flex; align-items: center; gap: 8px; }
+    .phys-field .phys-label { font-size: 12px; color: var(--text-muted); width: 110px; flex-shrink: 0; }
+    .phys-field input { flex: 1; padding: 6px 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; outline: none; }
+    .phys-field input:focus { border-color: var(--primary); }
+    .phys-field input::placeholder { color: var(--text-muted); }
+
     /* Regional dashboard */
     .region-card { padding: 12px; margin: 8px 16px; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); cursor: pointer; transition: border-color 0.2s; }
     .region-card:hover { border-color: var(--primary); }
@@ -301,7 +316,7 @@
             <summary>Google Sheets Configuration</summary>
             <input type="text" id="sheetsUrlInput" placeholder="Paste Google Apps Script Web App URL" value="">
             <button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="saveSheetsUrl()">Save URL</button>
-            <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Data is sent to this URL when you submit findings or click a status button.</p>
+            <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Data is sent to this URL when you click Save & Send to Google Sheets.</p>
           </details>
         </div>
 
@@ -678,21 +693,52 @@
           </div>
         </div>
 
-        <!-- Findings -->
+        <!-- Software Categories -->
         <div class="detail-section">
-          <h3>Findings</h3>
+          <h3>Software Categories</h3>
+          <div class="sw-cat-group" id="sw-cat-group">
+            ${['HR', 'Payroll', 'Credentialing', 'EHR', 'Workforce Scheduling', 'No Software'].map(cat => {
+              const checked = (ud.softwareCategories || []).includes(cat);
+              const catId = 'sw-' + cat.toLowerCase().replace(/\s+/g, '-');
+              return '<label class="' + (checked ? 'checked' : '') + '" id="label-' + catId + '" onclick="toggleSoftwareCategory(\'' + cat + '\')"><input type="checkbox" id="' + catId + '"' + (checked ? ' checked' : '') + '>' + cat + '</label>';
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Physician Software -->
+        <div class="detail-section">
+          <h3>Physician Software</h3>
+          <div class="phys-fields">
+            <div class="phys-field"><span class="phys-label">Hospital</span><input type="text" id="phys-hospital" placeholder="Software used..." value="${esc(ud.physicianHospital || '')}"></div>
+            <div class="phys-field"><span class="phys-label">Emergency Dept</span><input type="text" id="phys-ed" placeholder="Software used..." value="${esc(ud.physicianED || '')}"></div>
+            <div class="phys-field"><span class="phys-label">Nurses</span><input type="text" id="phys-nurses" placeholder="Software used..." value="${esc(ud.physicianNurses || '')}"></div>
+            <div class="phys-field"><span class="phys-label">Hospitalist</span><input type="text" id="phys-hospitalist" placeholder="Software used..." value="${esc(ud.physicianHospitalist || '')}"></div>
+            <div class="phys-field"><span class="phys-label">Anesthetist</span><input type="text" id="phys-anesthetist" placeholder="Software used..." value="${esc(ud.physicianAnesthetist || '')}"></div>
+          </div>
+        </div>
+
+        <!-- Note -->
+        <div class="detail-section">
+          <h3>Note</h3>
+          <textarea id="note-text" placeholder="Add any additional notes...">${esc(ud.note || ud.findings || '')}</textarea>
+        </div>
+
+        <!-- Save Button -->
+        <div class="detail-section">
+          <button class="btn btn-primary btn-sm" style="width:100%;" onclick="submitFindings()">Save & Send to Google Sheets</button>
+        </div>
+
+        <!-- History -->
+        <div class="detail-section">
+          <h3>History</h3>
           <div id="notes-list">
             ${(ud.notes || []).map((n, i) => `
               <div class="note-entry">
                 <div class="note-time">${n.timestamp} ${n.status ? '· <span class="call-status-badge status-' + n.status.toLowerCase().replace(/\s+/g,'-') + '">' + n.status + '</span>' : ''}</div>
-                <div class="note-text">${esc(n.text)}</div>
+                ${n.categories ? '<div class="note-text" style="color:var(--primary);font-size:11px;">' + n.categories + '</div>' : ''}
+                ${n.text ? '<div class="note-text">' + esc(n.text) + '</div>' : ''}
               </div>
             `).reverse().join('')}
-          </div>
-          <div style="margin-top:10px;">
-            <label style="font-size:12px;color:var(--text-muted);margin-bottom:4px;display:block;">Software</label>
-            <textarea id="finding-text" placeholder="Type software, notes, or any other findings...">${esc(ud.findings || '')}</textarea>
-            <button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%;" onclick="submitFindings()">Save & Send to Google Sheets</button>
           </div>
         </div>
       `;
@@ -728,7 +774,7 @@
 
     function getUserData(id) {
       if (!userData[id]) {
-        userData[id] = { callStatus: 'None', notes: [], findings: '' };
+        userData[id] = { callStatus: 'None', notes: [], findings: '', softwareCategories: [], physicianHospital: '', physicianED: '', physicianNurses: '', physicianHospitalist: '', physicianAnesthetist: '', note: '' };
       }
       return userData[id];
     }
@@ -750,27 +796,41 @@
       saveUserData();
       updateHospitalList();
       updateRegionDashboard();
-      openDetail(selectedHospital);
     }
 
     function submitFindings() {
       if (!selectedHospital) return;
-      const findingsText = document.getElementById('finding-text').value.trim();
-      if (!findingsText) { showToast('Please type something in the Software box.', 'error'); return; }
-
       const ud = getUserData(selectedHospital.id);
-      ud.findings = findingsText;
       const currentStatus = ud.callStatus !== 'None' ? ud.callStatus : '';
 
-      // Add a note entry for history
+      // Collect software categories from checkboxes
+      const categories = [];
+      document.querySelectorAll('#sw-cat-group input[type="checkbox"]:checked').forEach(cb => {
+        categories.push(cb.parentElement.textContent.trim());
+      });
+      ud.softwareCategories = categories;
+
+      // Collect physician fields
+      ud.physicianHospital = (document.getElementById('phys-hospital')?.value || '').trim();
+      ud.physicianED = (document.getElementById('phys-ed')?.value || '').trim();
+      ud.physicianNurses = (document.getElementById('phys-nurses')?.value || '').trim();
+      ud.physicianHospitalist = (document.getElementById('phys-hospitalist')?.value || '').trim();
+      ud.physicianAnesthetist = (document.getElementById('phys-anesthetist')?.value || '').trim();
+
+      // Collect note
+      const noteText = (document.getElementById('note-text')?.value || '').trim();
+      ud.note = noteText;
+
+      // Add history entry
       ud.notes.push({
         timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
-        text: findingsText,
-        status: currentStatus
+        text: noteText,
+        status: currentStatus,
+        categories: categories.join(', ')
       });
 
       saveUserData();
-      sendToGoogleSheets(selectedHospital, findingsText, currentStatus);
+      sendToGoogleSheets(selectedHospital, ud);
       openDetail(selectedHospital);
     }
 
@@ -782,21 +842,34 @@
       showToast('Google Sheets URL saved!', 'success');
     }
 
-    async function sendToGoogleSheets(hospital, findings, status) {
+    async function sendToGoogleSheets(hospital, ud) {
       if (!GOOGLE_SHEETS_URL) {
         showToast('No Google Sheets URL configured. Open Filters > Google Sheets Configuration.', 'error');
         return;
       }
+      const cats = ud.softwareCategories || [];
       const payload = {
-        name: hospital.name,
+        hospitalName: hospital.name,
         stateCity: `${hospital.state}, ${hospital.city}`,
         address: hospital.address,
         beds: hospital.beds || 'N/A',
         healthSystem: hospital.healthSystem,
         ownership: hospital.ownership,
         careType: hospital.careType,
-        findings: findings || '',
-        status: status || ''
+        callStatus: ud.callStatus || '',
+        softwareHR: cats.includes('HR') ? 'Yes' : '',
+        softwarePayroll: cats.includes('Payroll') ? 'Yes' : '',
+        softwareCredentialing: cats.includes('Credentialing') ? 'Yes' : '',
+        softwareEHR: cats.includes('EHR') ? 'Yes' : '',
+        softwareWorkforceScheduling: cats.includes('Workforce Scheduling') ? 'Yes' : '',
+        noSoftware: cats.includes('No Software') ? 'Yes' : '',
+        physicianHospital: ud.physicianHospital || '',
+        physicianEmergencyDept: ud.physicianED || '',
+        physicianNurses: ud.physicianNurses || '',
+        physicianHospitalist: ud.physicianHospitalist || '',
+        physicianAnesthetist: ud.physicianAnesthetist || '',
+        note: ud.note || '',
+        date: new Date().toISOString().replace('T', ' ').slice(0, 19)
       };
       try {
         await fetch(GOOGLE_SHEETS_URL, {
@@ -809,6 +882,31 @@
       } catch (err) {
         console.error('Google Sheets error:', err);
         showToast('Failed to send to Google Sheets.', 'error');
+      }
+    }
+
+    function toggleSoftwareCategory(cat) {
+      const catId = 'sw-' + cat.toLowerCase().replace(/\s+/g, '-');
+      const cb = document.getElementById(catId);
+      const label = document.getElementById('label-' + catId);
+      if (!cb || !label) return;
+
+      cb.checked = !cb.checked;
+      label.classList.toggle('checked', cb.checked);
+
+      if (cat === 'No Software' && cb.checked) {
+        ['HR', 'Payroll', 'Credentialing', 'EHR', 'Workforce Scheduling'].forEach(other => {
+          const otherId = 'sw-' + other.toLowerCase().replace(/\s+/g, '-');
+          const otherCb = document.getElementById(otherId);
+          const otherLabel = document.getElementById('label-' + otherId);
+          if (otherCb) { otherCb.checked = false; }
+          if (otherLabel) { otherLabel.classList.remove('checked'); }
+        });
+      } else if (cat !== 'No Software' && cb.checked) {
+        const nsCb = document.getElementById('sw-no-software');
+        const nsLabel = document.getElementById('label-sw-no-software');
+        if (nsCb) { nsCb.checked = false; }
+        if (nsLabel) { nsLabel.classList.remove('checked'); }
       }
     }
 
