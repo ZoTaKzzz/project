@@ -134,21 +134,15 @@
     textarea { width: 100%; padding: 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-family: inherit; resize: vertical; min-height: 60px; outline: none; }
     textarea:focus { border-color: var(--primary); }
 
-    /* Software category fields in detail panel */
-    .sw-cat-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
-    .sw-cat-field { display: flex; align-items: center; gap: 8px; }
-    .sw-cat-field .sw-label { font-size: 12px; color: var(--text-muted); width: 140px; flex-shrink: 0; }
-    .sw-cat-field input { flex: 1; padding: 6px 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; outline: none; }
-    .sw-cat-field input:focus { border-color: var(--primary); }
-    .sw-cat-field input::placeholder { color: var(--text-muted); }
-
-    /* Physician fields */
-    .phys-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
-    .phys-field { display: flex; align-items: center; gap: 8px; }
-    .phys-field .phys-label { font-size: 12px; color: var(--text-muted); width: 110px; flex-shrink: 0; }
-    .phys-field input { flex: 1; padding: 6px 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; outline: none; }
-    .phys-field input:focus { border-color: var(--primary); }
-    .phys-field input::placeholder { color: var(--text-muted); }
+    /* Software matrix fields in detail panel */
+    .matrix-group { margin-bottom: 12px; }
+    .matrix-role { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .matrix-fields { display: flex; flex-direction: column; gap: 6px; }
+    .matrix-field { display: flex; align-items: center; gap: 8px; }
+    .matrix-field .matrix-label { font-size: 11px; color: var(--text-muted); width: 150px; flex-shrink: 0; }
+    .matrix-field input { flex: 1; padding: 5px 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; outline: none; }
+    .matrix-field input:focus { border-color: var(--primary); }
+    .matrix-field input::placeholder { color: var(--text-muted); }
 
     /* Regional dashboard */
     .region-card { padding: 12px; margin: 8px 16px; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); cursor: pointer; transition: border-color 0.2s; }
@@ -374,7 +368,7 @@
         </select>
       </div>
       <div class="checkbox-group" style="margin-top:8px;">
-        <label><input type="checkbox" id="exportSoftware" checked>Include Software Categories</label>
+        <label><input type="checkbox" id="exportSoftware" checked>Include Software Matrix</label>
         <label><input type="checkbox" id="exportNotes" checked>Include Notes</label>
         <label><input type="checkbox" id="exportCallHistory" checked>Include Call History</label>
       </div>
@@ -407,6 +401,16 @@
     };
 
     const CALL_STATUSES = ['Called','Call Later','Not Responding'];
+
+    // Software matrix: role × function
+    const FUNC_KEYS = { 'Scheduling':'Scheduling', 'Call Scheduling':'CallScheduling', 'Time & Attendance':'TimeAttendance', 'Payroll':'Payroll', 'Credentialing':'Credentialing', 'Clinical Work (EHR)':'ClinicalEHR' };
+    const SOFTWARE_MATRIX = [
+      { role: 'ED Phys', key: 'edPhys', functions: ['Scheduling','Call Scheduling','Time & Attendance','Payroll','Credentialing','Clinical Work (EHR)'] },
+      { role: 'ED Nurses', key: 'edNurses', functions: ['Scheduling','Call Scheduling','Time & Attendance','Payroll','Credentialing','Clinical Work (EHR)'] },
+      { role: 'IP Nurses', key: 'ipNurses', functions: ['Scheduling','Time & Attendance','Payroll','Credentialing','Clinical Work (EHR)'] },
+      { role: 'Hospitalist', key: 'hospitalist', functions: ['Scheduling','Call Scheduling','Time & Attendance','Payroll','Credentialing','Clinical Work (EHR)'] },
+      { role: 'Anesthesia', key: 'anesthesia', functions: ['Scheduling','Call Scheduling','Time & Attendance','Payroll','Credentialing','Clinical Work (EHR)'] }
+    ];
 
     // Google Sheets Web App URL (set via UI or hardcode here)
     let GOOGLE_SHEETS_URL = localStorage.getItem('youshift_sheets_url') || localStorage.getItem('ushift_sheets_url') || '';
@@ -695,29 +699,20 @@
           </div>
         </div>
 
-        <!-- Software Categories -->
+        <!-- Software Matrix -->
         <div class="detail-section">
-          <h3>Software Categories</h3>
-          <div class="sw-cat-fields">
-            <div class="sw-cat-field"><span class="sw-label">HR</span><input type="text" id="sw-hr" placeholder="Software used..." value="${esc(ud.softwareHR || '')}"></div>
-            <div class="sw-cat-field"><span class="sw-label">Payroll</span><input type="text" id="sw-payroll" placeholder="Software used..." value="${esc(ud.softwarePayroll || '')}"></div>
-            <div class="sw-cat-field"><span class="sw-label">Credentialing</span><input type="text" id="sw-credentialing" placeholder="Software used..." value="${esc(ud.softwareCredentialing || '')}"></div>
-            <div class="sw-cat-field"><span class="sw-label">EHR</span><input type="text" id="sw-ehr" placeholder="Software used..." value="${esc(ud.softwareEHR || '')}"></div>
-            <div class="sw-cat-field"><span class="sw-label">Workforce Scheduling</span><input type="text" id="sw-workforce" placeholder="Software used..." value="${esc(ud.softwareWorkforce || '')}"></div>
-            <div class="sw-cat-field"><span class="sw-label">No Software</span><input type="text" id="sw-no-software" placeholder="Details..." value="${esc(ud.softwareNone || '')}"></div>
-          </div>
-        </div>
-
-        <!-- Physician Software -->
-        <div class="detail-section">
-          <h3>Physician Software</h3>
-          <div class="phys-fields">
-            <div class="phys-field"><span class="phys-label">Hospital</span><input type="text" id="phys-hospital" placeholder="Software used..." value="${esc(ud.physicianHospital || '')}"></div>
-            <div class="phys-field"><span class="phys-label">Emergency Dept</span><input type="text" id="phys-ed" placeholder="Software used..." value="${esc(ud.physicianED || '')}"></div>
-            <div class="phys-field"><span class="phys-label">Nurses</span><input type="text" id="phys-nurses" placeholder="Software used..." value="${esc(ud.physicianNurses || '')}"></div>
-            <div class="phys-field"><span class="phys-label">Hospitalist</span><input type="text" id="phys-hospitalist" placeholder="Software used..." value="${esc(ud.physicianHospitalist || '')}"></div>
-            <div class="phys-field"><span class="phys-label">Anesthetist</span><input type="text" id="phys-anesthetist" placeholder="Software used..." value="${esc(ud.physicianAnesthetist || '')}"></div>
-          </div>
+          <h3>Software Matrix</h3>
+          ${SOFTWARE_MATRIX.map(group => `
+            <div class="matrix-group">
+              <div class="matrix-role">${group.role}</div>
+              <div class="matrix-fields">
+                ${group.functions.map(func => {
+                  const key = group.key + FUNC_KEYS[func];
+                  return `<div class="matrix-field"><span class="matrix-label">${func}</span><input type="text" id="mx-${key}" placeholder="Software..." value="${esc(ud[key] || '')}"></div>`;
+                }).join('')}
+              </div>
+            </div>
+          `).join('')}
         </div>
 
         <!-- Note -->
@@ -777,7 +772,9 @@
 
     function getUserData(id) {
       if (!userData[id]) {
-        userData[id] = { callStatus: 'None', notes: [], findings: '', softwareHR: '', softwarePayroll: '', softwareCredentialing: '', softwareEHR: '', softwareWorkforce: '', softwareNone: '', physicianHospital: '', physicianED: '', physicianNurses: '', physicianHospitalist: '', physicianAnesthetist: '', note: '' };
+        const defaults = { callStatus: 'None', notes: [], findings: '', note: '' };
+        SOFTWARE_MATRIX.forEach(g => g.functions.forEach(f => { defaults[g.key + FUNC_KEYS[f]] = ''; }));
+        userData[id] = defaults;
       }
       return userData[id];
     }
@@ -806,21 +803,13 @@
       const ud = getUserData(selectedHospital.id);
       const currentStatus = ud.callStatus !== 'None' ? ud.callStatus : '';
 
-      // Collect software category fields
-      ud.softwareHR = (document.getElementById('sw-hr')?.value || '').trim();
-      ud.softwarePayroll = (document.getElementById('sw-payroll')?.value || '').trim();
-      ud.softwareCredentialing = (document.getElementById('sw-credentialing')?.value || '').trim();
-      ud.softwareEHR = (document.getElementById('sw-ehr')?.value || '').trim();
-      ud.softwareWorkforce = (document.getElementById('sw-workforce')?.value || '').trim();
-      ud.softwareNone = (document.getElementById('sw-no-software')?.value || '').trim();
-      const categories = [ud.softwareHR && 'HR', ud.softwarePayroll && 'Payroll', ud.softwareCredentialing && 'Credentialing', ud.softwareEHR && 'EHR', ud.softwareWorkforce && 'Workforce Scheduling', ud.softwareNone && 'No Software'].filter(Boolean);
-
-      // Collect physician fields
-      ud.physicianHospital = (document.getElementById('phys-hospital')?.value || '').trim();
-      ud.physicianED = (document.getElementById('phys-ed')?.value || '').trim();
-      ud.physicianNurses = (document.getElementById('phys-nurses')?.value || '').trim();
-      ud.physicianHospitalist = (document.getElementById('phys-hospitalist')?.value || '').trim();
-      ud.physicianAnesthetist = (document.getElementById('phys-anesthetist')?.value || '').trim();
+      // Collect software matrix fields
+      SOFTWARE_MATRIX.forEach(g => g.functions.forEach(f => {
+        const key = g.key + FUNC_KEYS[f];
+        ud[key] = (document.getElementById('mx-' + key)?.value || '').trim();
+      }));
+      const filledRoles = SOFTWARE_MATRIX.filter(g => g.functions.some(f => ud[g.key + FUNC_KEYS[f]])).map(g => g.role);
+      const categories = filledRoles;
 
       // Collect note
       const noteText = (document.getElementById('note-text')?.value || '').trim();
@@ -853,28 +842,22 @@
         return;
       }
       const payload = {
-        Name: hospital.name,
-        Location: `${hospital.state}, ${hospital.city}`,
-        Address: hospital.address,
-        Beds: hospital.beds || 'N/A',
+        'Hospital Name': hospital.name,
+        'State': hospital.state,
+        'City / Location': hospital.city,
+        'Address': hospital.address,
+        'Beds': hospital.beds || 'N/A',
         'Health System': hospital.healthSystem,
-        Ownership: hospital.ownership,
+        'Ownership': hospital.ownership,
         'Care Type': hospital.careType,
         'Outreach Status': ud.callStatus || '',
-        HR: ud.softwareHR || '',
-        Payroll: ud.softwarePayroll || '',
-        Credentialing: ud.softwareCredentialing || '',
-        EHR: ud.softwareEHR || '',
-        'Workforce Scheduling': ud.softwareWorkforce || '',
-        'No Software': ud.softwareNone || '',
-        Hospital: ud.physicianHospital || '',
-        'Emergency Dept': ud.physicianED || '',
-        Nurses: ud.physicianNurses || '',
-        Hospitalist: ud.physicianHospitalist || '',
-        Anesthetist: ud.physicianAnesthetist || '',
-        Date: new Date().toISOString().replace('T', ' ').slice(0, 19),
-        Note: ud.note || ''
+        'Phone': hospital.phone || '',
+        'Date': new Date().toISOString().replace('T', ' ').slice(0, 19),
+        'Notes': ud.note || ''
       };
+      SOFTWARE_MATRIX.forEach(g => g.functions.forEach(f => {
+        payload[g.role + ' \u2502 ' + f] = ud[g.key + FUNC_KEYS[f]] || '';
+      }));
       try {
         await fetch(GOOGLE_SHEETS_URL, {
           method: 'POST',
@@ -991,8 +974,9 @@
         'Prospect Score','Call Status'];
 
       if (includeSoftware) {
-        headers.push('Software HR','Software Payroll','Software Credentialing','Software EHR','Software Workforce Scheduling','No Software',
-          'Physician Hospital','Physician Emergency Dept','Physician Nurses','Physician Hospitalist','Physician Anesthetist');
+        SOFTWARE_MATRIX.forEach(g => g.functions.forEach(f => {
+          headers.push(g.role + ' \u2502 ' + f);
+        }));
       }
       if (includeNotes) {
         headers.push('Note','Latest Note');
@@ -1008,8 +992,9 @@
           h.prospectScore, ud.callStatus || 'None'];
 
         if (includeSoftware) {
-          row.push(ud.softwareHR || '', ud.softwarePayroll || '', ud.softwareCredentialing || '', ud.softwareEHR || '', ud.softwareWorkforce || '', ud.softwareNone || '',
-            ud.physicianHospital || '', ud.physicianED || '', ud.physicianNurses || '', ud.physicianHospitalist || '', ud.physicianAnesthetist || '');
+          SOFTWARE_MATRIX.forEach(g => g.functions.forEach(f => {
+            row.push(ud[g.key + FUNC_KEYS[f]] || '');
+          }));
         }
         if (includeNotes) {
           const notes = ud.notes || [];
