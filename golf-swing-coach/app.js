@@ -201,6 +201,9 @@ function wireEvents() {
 
   // AI Feedback
   $('#get-feedback-btn').addEventListener('click', getAIFeedback);
+
+  // AI Phase Play
+  $('#smart-play-btn').addEventListener('click', startSmartPlayback);
 }
 
 // ---------------------------------------------------------------------------
@@ -719,6 +722,288 @@ function renderCapturedFrames() {
         </div>
       </div>
     </div>`).join('');
+}
+
+// ---------------------------------------------------------------------------
+// AI Phase Detection — Smart Playback
+// ---------------------------------------------------------------------------
+const PHASE_NAMES = ['Address', 'Takeaway', 'Top of Backswing', 'Mid-Downswing', 'Impact', 'Follow-Through'];
+
+function extractFrameAsBase64(video, time) {
+  return new Promise((resolve) => {
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth;
+    c.height = video.videoHeight;
+    const ctx = c.getContext('2d');
+
+    const onSeeked = () => {
+      video.removeEventListener('seeked', onSeeked);
+      ctx.drawImage(video, 0, 0);
+      resolve(c.toDataURL('image/jpeg', 0.7));
+    };
+
+    video.addEventListener('seeked', onSeeked);
+    video.currentTime = time;
+  });
+}
+
+async function detectPhasesForVideo(video, label) {
+  const duration = video.duration;
+  const numSamples = 12;
+  const interval = duration / (numSamples + 1);
+  const frames = [];
+
+  const statusText = $('#phase-status-text');
+  const progressBar = $('#phase-progress-bar');
+
+  for (let i = 1; i <= numSamples; i++) {
+    const t = interval * i;
+    statusText.textContent = `Extracting ${label} frame ${i}/${numSamples}...`;
+    progressBar.style.width = `${(i / numSamples) * 30}%`;
+    const dataUrl = await extractFrameAsBase64(video, t);
+    frames.push({ time: t, dataUrl });
+  }
+
+  statusText.textContent = `Sending ${label} frames to AI for phase detection...`;
+  progressBar.style.width = '40%';
+
+  const imageContents = frames.map((f, idx) => ({
+    type: 'image',
+    source: { type: 'base64', media_type: 'image/jpeg', data: f.dataUrl.split(',')[1] },
+  }));
+
+  const textPrompt = {
+    type: 'text',
+    text: `You are analyzing ${numSamples} sequential frames from a golf swing video. The frames are evenly spaced across the full swing. For each frame (numbered 1-${numSamples}), identify which swing phase it belongs to. The phases IN ORDER are:
+1. Address (setup position before swing starts)
+2. Takeaway (club moving back, hands below chest)
+3. Top of Backswing (hands/club at highest point behind)
+4. Mid-Downswing (club coming down, roughly 45° from top)
+5. Impact (club contacting the ball)
+6. Follow-Through (after impact, club swinging through to finish)
+
+Respond ONLY with a JSON array of objects. Each object must have "frame" (1-based index) and "phase" (exact phase name from the list above). Example:
+[{"frame":1,"phase":"Address"},{"frame":2,"phase":"Address"},{"frame":3,"phase":"Takeaway"},...]}
+
+If a frame is unclear or shows no golfer, use the phase that makes most sense given adjacent frames. The phases must be monotonically non-decreasing (a later frame cannot be an earlier phase).`
+  };
+
+  const messages = [{
+    role: 'user',
+    content: [...imageContents, textPrompt],
+  }];
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': S.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages,
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`API ${resp.status}: ${err}`);
+    }
+
+    const data = await resp.json();
+    const text = data.content[0].text;
+
+    // Parse JSON from response (may be wrapped in markdown code block)
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error('Could not parse phase detection response');
+
+    const phaseResults = JSON.parse(jsonMatch[0]);
+
+    // Map frame indices back to timestamps and find phase transitions
+    const phases = [];
+    let currentPhase = null;
+
+    for (const item of phaseResults) {
+      const frameIdx = item.frame - 1;
+      if (frameIdx >= 0 && frameIdx < frames.length) {
+        if (item.phase !== currentPhase) {
+          phases.push({ phase: item.phase, time: frames[frameIdx].time });
+          currentPhase = item.phase;
+        }
+      }
+    }
+
+    return phases;
+  } catch (e) {
+    throw new Error(`Phase detection failed for ${label}: ${e.message}`);
+  }
+}
+
+async function startSmartPlayback() {
+  if (!S.apiKey) {
+    alert('Enter your Anthropic API key in Settings (Step 2) to use AI Phase Play.');
+    return;
+  }
+
+  const uVid = $('#user-video');
+  const pVid = $('#pro-video');
+
+  if (!uVid.duration || !pVid.duration) {
+    alert('Both videos must be loaded before using AI Phase Play.');
+    return;
+  }
+
+  // Show status
+  const statusEl = $('#phase-status');
+  const statusText = $('#phase-status-text');
+  const progressBar = $('#phase-progress-bar');
+  const smartBtn = $('#smart-play-btn');
+
+  statusEl.classList.remove('hidden');
+  smartBtn.classList.add('active');
+  smartBtn.disabled = true;
+  progressBar.style.width = '0%';
+
+  // Stop any current playback
+  stopPlay();
+
+  // Clear previous captures for fresh AI analysis
+  S.frames = [];
+  $('#keyframes-grid').innerHTML = '';
+
+  try {
+    // Detect phases for user video
+    statusText.textContent = 'Analyzing your swing...';
+    const userPhases = await detectPhasesForVideo(uVid, 'Your Swing');
+    progressBar.style.width = '50%';
+
+    // Detect phases for pro video
+    statusText.textContent = 'Analyzing pro swing...';
+    const proPhases = await detectPhasesForVideo(pVid, 'Pro Swing');
+    progressBar.style.width = '80%';
+
+    statusText.textContent = 'Starting synchronized phase playback...';
+    progressBar.style.width = '100%';
+
+    // Wait briefly to show completion
+    await sleep(500);
+    statusEl.classList.add('hidden');
+
+    // Run the synchronized phase-by-phase playback
+    await playPhaseByPhase(userPhases, proPhases);
+
+  } catch (e) {
+    statusText.textContent = `Error: ${e.message}`;
+    progressBar.style.width = '0%';
+    setTimeout(() => statusEl.classList.add('hidden'), 4000);
+  } finally {
+    smartBtn.classList.remove('active');
+    smartBtn.disabled = false;
+  }
+}
+
+async function playPhaseByPhase(userPhases, proPhases) {
+  const uVid = $('#user-video');
+  const pVid = $('#pro-video');
+  const uBadge = $('#user-phase-badge');
+  const pBadge = $('#pro-phase-badge');
+
+  // For each of the 6 canonical phases, find best matching timestamp in each video
+  for (const targetPhase of PHASE_NAMES) {
+    const userMatch = userPhases.find(p => p.phase === targetPhase);
+    const proMatch = proPhases.find(p => p.phase === targetPhase);
+
+    if (!userMatch && !proMatch) continue;
+
+    // Seek both videos to their respective phase timestamps
+    const userTime = userMatch ? userMatch.time : estimateTime(uVid.duration, targetPhase);
+    const proTime = proMatch ? proMatch.time : estimateTime(pVid.duration, targetPhase);
+
+    // Seek and wait for both to settle
+    await seekAndWait(uVid, userTime);
+    await seekAndWait(pVid, proTime);
+
+    // Show phase badges
+    uBadge.textContent = targetPhase;
+    uBadge.classList.remove('hidden');
+    pBadge.textContent = targetPhase;
+    pBadge.classList.remove('hidden');
+
+    // Update seek bar position
+    if (uVid.duration) {
+      $('#seek-bar').value = (uVid.currentTime / uVid.duration) * 1000;
+    }
+    updateTimeDisplay();
+
+    // Run pose detection at this frame
+    runSingleFrame();
+    await sleep(200); // allow pose detection to process
+
+    // Auto-capture this phase
+    captureFrameWithLabel(targetPhase);
+
+    // Pause at this phase for 2 seconds so user can examine
+    await sleep(2000);
+  }
+
+  // Hide badges at end
+  uBadge.classList.add('hidden');
+  pBadge.classList.add('hidden');
+}
+
+function captureFrameWithLabel(phaseName) {
+  const uVid = $('#user-video');
+  const pVid = $('#pro-video');
+  const uCan = $('#user-canvas');
+  const pCan = $('#pro-canvas');
+
+  const snap = (vid, overlay) => {
+    const c = document.createElement('canvas');
+    c.width = vid.videoWidth; c.height = vid.videoHeight;
+    const cx = c.getContext('2d');
+    cx.drawImage(vid, 0, 0);
+    cx.drawImage(overlay, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.85);
+  };
+
+  S.frames.push({
+    phase: phaseName,
+    time: uVid.currentTime,
+    userImg: snap(uVid, uCan),
+    proImg:  snap(pVid, pCan),
+    userMetrics: S.userMetrics ? { ...S.userMetrics } : null,
+    proMetrics:  S.proMetrics  ? { ...S.proMetrics }  : null,
+  });
+  renderCapturedFrames();
+}
+
+function estimateTime(duration, phase) {
+  // Fallback: distribute phases evenly across the video duration
+  const idx = PHASE_NAMES.indexOf(phase);
+  return (duration * (idx + 0.5)) / PHASE_NAMES.length;
+}
+
+function seekAndWait(video, time) {
+  return new Promise((resolve) => {
+    if (Math.abs(video.currentTime - time) < 0.05) {
+      resolve();
+      return;
+    }
+    const onSeeked = () => {
+      video.removeEventListener('seeked', onSeeked);
+      resolve();
+    };
+    video.addEventListener('seeked', onSeeked);
+    video.currentTime = time;
+  });
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // ---------------------------------------------------------------------------

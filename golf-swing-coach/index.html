@@ -198,6 +198,7 @@
             <div class="video-wrapper" id="user-video-wrapper">
               <video id="user-video" muted playsinline preload="auto"></video>
               <canvas id="user-canvas"></canvas>
+              <div id="user-phase-badge" class="phase-badge hidden"></div>
             </div>
           </div>
           <div class="video-panel">
@@ -207,6 +208,7 @@
             <div class="video-wrapper" id="pro-video-wrapper">
               <video id="pro-video" muted playsinline preload="auto"></video>
               <canvas id="pro-canvas"></canvas>
+              <div id="pro-phase-badge" class="phase-badge hidden"></div>
             </div>
           </div>
         </div>
@@ -243,6 +245,23 @@
             </svg>
             Capture
           </button>
+          <button id="smart-play-btn" class="ctrl-btn smart" title="AI detects swing phases and pauses at each position">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M7 10l2 2 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+            </svg>
+            AI Phase Play
+          </button>
+        </div>
+
+        <!-- AI Phase Detection Status -->
+        <div id="phase-status" class="phase-status hidden">
+          <div class="phase-status-inner">
+            <span id="phase-status-text">Detecting swing phases...</span>
+            <div class="phase-progress">
+              <div id="phase-progress-bar" class="phase-progress-fill"></div>
+            </div>
+          </div>
         </div>
 
         <!-- Overlay toggles -->
@@ -283,7 +302,7 @@
             </svg>
             Captured Swing Positions
           </h3>
-          <p class="panel-hint">Pause at key positions (address, takeaway, top, impact, finish) and click <strong>Capture</strong>.</p>
+          <p class="panel-hint">Pause at key positions and click <strong>Capture</strong>, or use <strong>AI Phase Play</strong> to auto-detect and capture all phases.</p>
           <div id="keyframes-grid" class="keyframes-grid"></div>
         </div>
 
