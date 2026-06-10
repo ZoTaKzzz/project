@@ -407,11 +407,12 @@ function detectLoop() {
   S.animId = requestAnimationFrame(detectLoop);
 }
 
-function processVideoPose(type, color) {
+function processVideoPose(type, color, allowPaused = false) {
   const vid    = $(`#${type}-video`);
   const canvas = $(`#${type}-canvas`);
 
-  if (vid.paused || vid.ended || vid.readyState < 2) return;
+  if (vid.readyState < 2) return;
+  if (!allowPaused && (vid.paused || vid.ended)) return;
 
   const now = performance.now();
   const lastKey = type === 'user' ? 'lastUserT' : 'lastProT';
@@ -434,10 +435,10 @@ function runSingleFrame() {
   if (!S.poseLandmarker) return;
   // Slight delay to let video seek settle
   setTimeout(() => {
-    processVideoPose('user', USER_CLR);
+    processVideoPose('user', USER_CLR, true);
     // Need a different timestamp for the second call
     setTimeout(() => {
-      processVideoPose('pro', PRO_CLR);
+      processVideoPose('pro', PRO_CLR, true);
       if (S.userMetrics && S.proMetrics) renderMetrics(S.userMetrics, S.proMetrics);
     }, 50);
   }, 100);
