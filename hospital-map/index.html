@@ -187,7 +187,10 @@
     .leaflet-popup-content-wrapper { background: var(--bg-card); color: var(--text); border-radius: 8px; }
     .leaflet-popup-tip { background: var(--bg-card); }
     .leaflet-popup-content { font-size: 13px; }
-    .hospital-marker { border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+    .hospital-marker { border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 4px rgba(0,0,0,0.4); transition: all 0.2s; }
+    .hospital-marker.selected { border-color: #4A7DFF; box-shadow: 0 0 0 4px rgba(74,125,255,0.4), 0 0 12px rgba(74,125,255,0.6); width: 16px !important; height: 16px !important; }
+    @keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(74,125,255,0.6); } 70% { box-shadow: 0 0 0 10px rgba(74,125,255,0); } 100% { box-shadow: 0 0 0 0 rgba(74,125,255,0); } }
+    .hospital-marker.selected { animation: pulse-ring 1.5s ease-out infinite; }
   </style>
 </head>
 <body>
@@ -455,8 +458,9 @@
         attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
       }).addTo(map);
       markerGroup = L.markerClusterGroup({
-        chunkedLoading: true, maxClusterRadius: 50, spiderfyOnMaxZoom: true,
+        chunkedLoading: true, maxClusterRadius: 35, spiderfyOnMaxZoom: true,
         showCoverageOnHover: false, zoomToBoundsOnClick: true,
+        disableClusteringAtZoom: 9,
         iconCreateFunction: cluster => {
           const count = cluster.getChildCount();
           let size = 'small', r = 30;
@@ -475,23 +479,57 @@
       return '#ef4444';
     }
 
+    // Track marker references for highlighting
+    let markerLookup = {};
+    let selectedMarker = null;
+
     function updateMapMarkers() {
       markerGroup.clearLayers();
+      markerLookup = {};
+      selectedMarker = null;
       const markers = [];
       for (const h of filtered) {
         const color = getMarkerColor(h);
+        const ud = userData[h.id];
+        const status = ud ? (ud.callStatus || 'None') : 'None';
+        const statusBorder = status === 'Called' ? '#60a5fa' : status === 'Call Later' ? '#fbbf24' : status === 'Not Responding' ? '#f87171' : 'white';
         const icon = L.divIcon({
           className: '',
-          html: `<div class="hospital-marker" style="width:12px;height:12px;background:${color};"></div>`,
+          html: `<div class="hospital-marker" data-hospital-id="${h.id}" style="width:12px;height:12px;background:${color};border-color:${statusBorder};"></div>`,
           iconSize: [12, 12], iconAnchor: [6, 6]
         });
         const marker = L.marker([h.lat, h.lng], { icon });
+        marker.hospitalId = h.id;
         marker.on('click', () => openDetail(h));
         marker.bindTooltip(`<b>${esc(h.name)}</b><br>${h.city}, ${h.state} | Score: ${h.prospectScore}`, { direction: 'top' });
         markers.push(marker);
+        markerLookup[h.id] = marker;
       }
       markerGroup.addLayers(markers);
       document.getElementById('map-counter').textContent = filtered.length.toLocaleString();
+    }
+
+    function highlightMarker(hospitalId) {
+      // Remove highlight from previous selection
+      if (selectedMarker) {
+        const el = selectedMarker.getElement();
+        if (el) { const dot = el.querySelector('.hospital-marker'); if (dot) dot.classList.remove('selected'); }
+      }
+      // Add highlight to new selection
+      const marker = markerLookup[hospitalId];
+      if (marker) {
+        selectedMarker = marker;
+        const el = marker.getElement();
+        if (el) { const dot = el.querySelector('.hospital-marker'); if (dot) dot.classList.add('selected'); }
+      }
+    }
+
+    function clearMarkerHighlight() {
+      if (selectedMarker) {
+        const el = selectedMarker.getElement();
+        if (el) { const dot = el.querySelector('.hospital-marker'); if (dot) dot.classList.remove('selected'); }
+        selectedMarker = null;
+      }
     }
 
     // ============ FILTERS ============
@@ -743,12 +781,17 @@
 
       panel.classList.add('open');
       map.invalidateSize();
+      // Highlight the selected marker on the map
+      setTimeout(() => highlightMarker(h.id), 100);
     }
 
     function closeDetail() {
+      clearMarkerHighlight();
       document.getElementById('detail-panel').classList.remove('open');
       selectedHospital = null;
+      // Invalidate map after CSS transition completes to prevent white gap
       map.invalidateSize();
+      setTimeout(() => map.invalidateSize(), 350);
     }
 
     // ============ USER DATA (localStorage) ============
