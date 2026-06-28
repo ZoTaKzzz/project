@@ -803,7 +803,7 @@ If a frame is unclear or shows no golfer, use the phase that makes most sense gi
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 1024,
         messages,
       }),
@@ -1031,7 +1031,7 @@ async function getAIFeedback() {
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 1500,
         messages: [{
           role: 'user',
