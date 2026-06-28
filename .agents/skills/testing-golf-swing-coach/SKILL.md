@@ -9,10 +9,21 @@ description: Test the Golf Swing Coach SPA end-to-end. Use when verifying pose d
 
 ```bash
 cd golf-swing-coach
-python3 -m http.server 8080
+# Use no-cache server to avoid stale JS modules after code changes
+python3 -c "
+import http.server
+class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        self.send_header('Pragma', 'no-cache')
+        super().end_headers()
+http.server.HTTPServer(('', 8080), NoCacheHandler).serve_forever()
+"
 ```
 
 The app is a static SPA — no build step required. Open http://localhost:8080.
+
+**Important:** Python's default `http.server` aggressively caches JS modules. If you edit `app.js` and reload, the browser may still run the old code. Always use the no-cache server above, and navigate with a cache-busting query param (e.g. `?nocache=1`) after code changes.
 
 ## Test Video Generation
 
@@ -82,6 +93,15 @@ await uploadFile('pro-file-input', 'swing_pro.mp4');
 - Click `#get-feedback-btn` without API key → alert with "API key" message
 - Override `window.alert` to intercept and verify the message text
 
+### AI Phase Play (`#smart-play-btn`)
+- **Guard (no API key):** Click → alert "Enter your Anthropic API key in Settings (Step 2) to use AI Phase Play."
+- **With API key:** Button disabled + `.active` class, `#phase-status` visible, `#phase-status-text` shows "Analyzing your swing..." then "Analyzing pro swing..." then "Starting synchronized phase playback..."
+- `#phase-progress-bar` width: 0% → 50% (user done) → 80% (pro done) → 100%
+- On success: `playPhaseByPhase()` seeks both videos to detected phase timestamps, shows `#user-phase-badge` / `#pro-phase-badge` with phase name, auto-captures frames via `captureFrameWithLabel()`
+- Phase names: Address, Takeaway, Top of Backswing, Mid-Downswing, Impact, Follow-Through (from `PHASE_NAMES` constant, line ~730)
+- **Error differentiation:** 404 with "model:" in body = wrong model name; 401 "invalid x-api-key" = expired/invalid API key; the model name is correct if you see a 401 instead of 404
+- API calls go to `https://api.anthropic.com/v1/messages` with model `claude-3-5-sonnet-20241022`
+
 ## Notes
 
 - MediaPipe Pose Landmarker loads from CDN (~10s on first load, cached after)
@@ -92,4 +112,4 @@ await uploadFile('pro-file-input', 'swing_pro.mp4');
 
 ## Devin Secrets Needed
 
-- `ANTHROPIC_API_KEY` (optional) — only needed to test the AI coaching feedback feature end-to-end. The app works without it; the guard test verifies the missing-key alert path.
+- `ANTHROPIC_API_KEY` (optional) — needed to test AI Phase Play and AI coaching feedback end-to-end. The app works without it; guard tests verify the missing-key alert path. Without a valid key, you can still verify the model name is correct by checking the error type (401 auth = model name accepted, 404 = model name rejected).
